@@ -11,10 +11,12 @@ trait Normalize {
 }
 
 impl Normalize for Vec<f32> {
+    // Normalizes the vector so that its elements sum to 1. If the sum is 0, it returns the
+    // original vector.
     fn normalize(&self) -> Self {
-        let mut total = self.iter().sum::<f32>();
+        let total = self.iter().sum::<f32>();
         if total < f32::EPSILON {
-            total = 1.0;
+            return self.clone();
         }
         self.iter().map(|x| *x / total).collect()
     }
@@ -121,6 +123,10 @@ struct ScheduleAlgorithm {
 }
 
 impl ScheduleAlgorithm {
+    // Generates a vector of intervals derived from critical points such as task deadlines,
+    // idle interval edges, and the scheduling algorithm's start time. It also divides excessively
+    // large intervals into smaller sub-intervals. Long intervals could lead to overly coarse
+    // scheduling decisions, with long intervals of doing only one task.
     fn get_critical_intervals(&self) -> Vec<Interval> {
         let mut critical_points = BTreeSet::new();
 
@@ -157,6 +163,8 @@ impl ScheduleAlgorithm {
             .collect()
     }
 
+    // The function finds, for each task chain, the task whose computed interval from the schedule
+    // start or previous task deadline to its deadline overlaps the given interval.
     fn get_intercepting_tasks(&self, interval: Interval) -> Vec<&Task> {
         let mut res = Vec::new();
         for chain in &self.task_chains {
@@ -174,6 +182,13 @@ impl ScheduleAlgorithm {
         res
     }
 
+    // The function creates a new distribution the tasks in a way that when added to current task
+    // distribution minimizes the distance between the new task distribution and the target task
+    // distribution. The distance is calculated as the sum of the absolute differences between
+    // corresponding elements of the two distributions. Basically it is minkowski distance with p=1.
+    // However, if this distance on some tasks is negative, it is set to 0, since we cannot
+    // un-schedule tasks in the past. If the difference is negligible, it returns the target task
+    // distribution.
     fn distribute_tasks(
         &self,
         current_task_distribution: Vec<f32>,
@@ -195,6 +210,8 @@ impl ScheduleAlgorithm {
         self.idle_intervals.iter().any(|i| i.intercepts(interval))
     }
 
+    // The function runs the scheduling algorithm, iterating over the critical intervals and
+    // distributing tasks based on the current and target task distributions.
     fn run(&self) -> Schedule {
         let mut schedule = Schedule {
             inner: HashMap::with_capacity(self.task_chains.iter().map(|c| c.len()).sum()),
@@ -206,17 +223,12 @@ impl ScheduleAlgorithm {
             if self.is_intercepting_idle_interval(interval) {
                 continue;
             }
-            let current_task_distribution = schedule.get_tasks_distribution(&intercepting_tasks);
-            let perfect_task_distribution =
-                schedule.get_target_tasks_distribution(&intercepting_tasks);
-            let new_task_distribution =
-                self.distribute_tasks(current_task_distribution, perfect_task_distribution);
+            let current_dist = schedule.get_tasks_distribution(&intercepting_tasks);
+            let target_dist = schedule.get_target_tasks_distribution(&intercepting_tasks);
+            let new_task_dist = self.distribute_tasks(current_dist, target_dist);
             schedule.schedule_tasks(
                 interval,
-                new_task_distribution
-                    .into_iter()
-                    .zip(intercepting_tasks)
-                    .collect(),
+                new_task_dist.into_iter().zip(intercepting_tasks).collect(),
             );
         }
 
