@@ -26,15 +26,6 @@ struct Interval {
     end: Instant,
 }
 
-impl From<&[Instant]> for Interval {
-    fn from(value: &[Instant]) -> Self {
-        Self {
-            start: value[0],
-            end: value[1],
-        }
-    }
-}
-
 impl Interval {
     fn intercepts(&self, other: Interval) -> bool {
         self.start < other.end && other.start < self.end
