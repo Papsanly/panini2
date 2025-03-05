@@ -179,12 +179,16 @@ impl ScheduleAlgorithm {
         current_task_distribution: Vec<f32>,
         target_task_distribution: Vec<f32>,
     ) -> Vec<f32> {
-        target_task_distribution
+        let res = target_task_distribution
             .iter()
             .zip(current_task_distribution)
-            .map(|(pd, d)| (pd - d).max(0.0))
-            .collect::<Vec<_>>()
-            .normalize()
+            .map(|(pd, d)| (pd - d).max(0.0));
+
+        if res.clone().sum::<f32>() < f32::EPSILON {
+            return target_task_distribution;
+        }
+
+        res.collect::<Vec<_>>().normalize()
     }
 
     fn is_intercepting_idle_interval(&self, interval: Interval) -> bool {
@@ -368,6 +372,23 @@ mod tests {
         for (new_distribution, true_new_distribution) in new_distribution
             .iter()
             .zip([0.6190476, 0.0, 0.38095242].iter())
+        {
+            assert!((true_new_distribution - new_distribution).abs() < f32::EPSILON);
+        }
+    }
+
+    #[test]
+    fn test_task_distribution_diff_is_zero() {
+        let now = Instant::now();
+        let algorithm = get_test_algorithm(now);
+
+        let new_distribution = algorithm.distribute_tasks(
+            vec![0.1, 0.3, 0.1].normalize(),
+            vec![1.0, 3.0, 1.0].normalize(),
+        );
+
+        for (new_distribution, true_new_distribution) in
+            new_distribution.iter().zip([0.2, 0.6, 0.2].iter())
         {
             assert!((true_new_distribution - new_distribution).abs() < f32::EPSILON);
         }
