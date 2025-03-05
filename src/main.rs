@@ -1,408 +1,275 @@
 use derive_more::{Deref, DerefMut};
+use jiff::{Span, Timestamp, ToSpan};
 use std::{
-    collections::{BTreeSet, HashMap},
+    cmp::Reverse,
+    collections::HashMap,
     fmt::{self, Display, Formatter},
-    iter,
-    time::{Duration, Instant},
 };
 
 trait Normalize {
-    fn normalize(&self) -> Self;
+    fn normalize(self) -> Self;
 }
 
 impl Normalize for Vec<f32> {
     // Normalizes the vector so that its elements sum to 1. If the sum is 0, it returns the
     // original vector.
-    fn normalize(&self) -> Self {
+    fn normalize(self) -> Self {
         let total = self.iter().sum::<f32>();
         if total < f32::EPSILON {
-            return self.clone();
+            return self;
         }
-        self.iter().map(|x| *x / total).collect()
+        self.into_iter().map(|x| x / total).collect()
     }
 }
 
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 struct Interval {
-    start: Instant,
-    end: Instant,
+    timestamp: Timestamp,
+    span: Span,
 }
 
 impl Interval {
-    fn intercepts(&self, other: Interval) -> bool {
-        self.start < other.end && other.start < self.end
+    fn new(timestamp: Timestamp, span: Span) -> Self {
+        Self { timestamp, span }
     }
 
-    fn len(&self) -> Duration {
-        self.end - self.start
+    fn end(&self) -> Timestamp {
+        self.timestamp + self.span
     }
 }
 
-#[derive(Hash, Debug, Eq, PartialEq)]
 struct Task {
     description: String,
-    deadline: Instant,
-    intensity: u32,
-    granularity: Duration,
+    deadline: Timestamp,
+    granularity: Span,
 }
 
-#[derive(Deref, DerefMut)]
-struct TaskChain(Vec<Task>);
+trait TaskAllocator {
+    fn allocate(&self, schedule: &Schedule, task_idx: TaskIdx) -> Interval;
+}
+
+// this is a task allocator which takes into account idle intervals where tasks cannot be placed
+struct IdleIntervalAllocator {
+    idle_intervals: Vec<Interval>,
+}
+
+impl IdleIntervalAllocator {
+    fn new(idle_intervals: Vec<Interval>) -> Self {
+        Self { idle_intervals }
+    }
+}
+
+impl TaskAllocator for IdleIntervalAllocator {
+    fn allocate(&self, schedule: &Schedule, task_idx: TaskIdx) -> Interval {
+        todo!()
+    }
+}
+
+trait Heuristic {
+    fn evaluate(&self, task: &Task) -> i32;
+}
+
+struct DependencyHeuristic {
+    dependencies: HashMap<TaskIdx, Vec<TaskIdx>>,
+}
+
+impl DependencyHeuristic {
+    fn new(dependencies: HashMap<TaskIdx, Vec<TaskIdx>>) -> Self {
+        Self { dependencies }
+    }
+}
+
+impl Heuristic for DependencyHeuristic {
+    fn evaluate(&self, task: &Task) -> i32 {
+        todo!()
+    }
+}
+
+struct PriorityHeuristic {
+    priorities: HashMap<TaskIdx, i32>,
+}
+
+impl PriorityHeuristic {
+    fn new(priorities: HashMap<TaskIdx, i32>) -> Self {
+        Self { priorities }
+    }
+}
+
+impl Heuristic for PriorityHeuristic {
+    fn evaluate(&self, task: &Task) -> i32 {
+        todo!()
+    }
+}
+
+struct DeadlineOverVelocityHeuristic {
+    velocities: HashMap<TaskIdx, f32>,
+}
+
+impl DeadlineOverVelocityHeuristic {
+    fn new(velocities: HashMap<TaskIdx, f32>) -> Self {
+        Self { velocities }
+    }
+}
+
+impl Heuristic for DeadlineOverVelocityHeuristic {
+    fn evaluate(&self, task: &Task) -> i32 {
+        todo!()
+    }
+}
+
+type TaskIdx = usize;
 
 #[derive(Deref, DerefMut)]
-struct Schedule<'a> {
+struct Schedule {
     #[deref]
     #[deref_mut]
-    inner: HashMap<&'a Task, Vec<Interval>>,
-    start: Instant,
+    inner: HashMap<TaskIdx, Vec<Interval>>,
+    tasks: Vec<Task>,
+    allocator: Box<dyn TaskAllocator>,
+    heuristics: Vec<Box<dyn Heuristic>>,
 }
 
-impl<'a> Schedule<'a> {
-    fn get_total_task_duration(&self, task: &'a Task) -> Duration {
-        self.get(task)
-            .map(|s| s.iter().map(|interval| interval.len()).sum::<Duration>())
-            .unwrap_or_default()
-    }
-
-    fn get_target_tasks_distribution(&self, tasks: &[&'a Task]) -> Vec<f32> {
-        tasks
-            .iter()
-            .map(|task| task.intensity as f32)
-            .collect::<Vec<_>>()
-            .normalize()
-    }
-
-    fn get_tasks_distribution(&self, tasks: &[&'a Task]) -> Vec<f32> {
-        tasks
-            .iter()
-            .map(|task| self.get_total_task_duration(task).as_secs_f32())
-            .collect::<Vec<_>>()
-            .normalize()
-    }
-
-    fn schedule_tasks(&mut self, interval: Interval, task_distribution: Vec<(f32, &'a Task)>) {
-        let mut task_start = interval.start;
-        let total_duration = interval.len();
-        for (task_time, task) in task_distribution {
-            let task_schedule = self.entry(task).or_default();
-            if task_time < f32::EPSILON {
-                continue;
-            }
-            let task_duration = Duration::from_secs_f32(total_duration.as_secs_f32() * task_time);
-            task_schedule.push(Interval {
-                start: task_start,
-                end: task_start + task_duration,
-            });
-            task_start += task_duration
+impl Schedule {
+    fn new(allocator: impl TaskAllocator + 'static) -> Self {
+        Self {
+            inner: HashMap::new(),
+            tasks: Vec::new(),
+            allocator: Box::new(allocator),
+            heuristics: Vec::new(),
         }
     }
+
+    fn add_heuristic(mut self, heuristic: impl Heuristic + 'static) -> Self {
+        self.heuristics.push(Box::new(heuristic));
+        self
+    }
 }
 
-impl Display for Schedule<'_> {
+impl Display for Schedule {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        for (task, intervals) in self.iter() {
-            writeln!(f, "{}:", task.description)?;
-            for interval in intervals {
-                writeln!(
-                    f,
-                    "    {:?} - {:?}",
-                    (interval.start - self.start).as_secs(),
-                    (interval.end - self.start).as_secs()
-                )?;
-            }
-        }
-        Ok(())
+        todo!()
     }
 }
 
-struct ScheduleAlgorithm {
-    start: Instant,
-    task_chains: Vec<TaskChain>,
-    idle_intervals: Vec<Interval>,
-    max_critical_interval: Duration,
+struct SchedulerIter<'a> {
+    schedule: &'a Schedule,
+    interval: Interval,
+    current_time: Timestamp,
 }
 
-impl ScheduleAlgorithm {
-    // Generates a vector of intervals derived from critical points such as task deadlines,
-    // idle interval edges, and the scheduling algorithm's start time. It also divides excessively
-    // large intervals into smaller sub-intervals. Long intervals could lead to overly coarse
-    // scheduling decisions, with long intervals of doing only one task.
-    fn get_critical_intervals(&self) -> Vec<Interval> {
-        let mut critical_points = BTreeSet::new();
-
-        for chain in &self.task_chains {
-            for task in chain.iter() {
-                critical_points.insert(task.deadline);
-            }
+impl<'a> Iterator for SchedulerIter<'a> {
+    type Item = (TaskIdx, Interval);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_time >= self.interval.end() {
+            return None;
         }
 
-        for interval in &self.idle_intervals {
-            critical_points.insert(interval.start);
-            critical_points.insert(interval.end);
-        }
-
-        critical_points.insert(self.start);
-
-        let mut curr = self.start;
-        for point in critical_points.clone().into_iter().skip(1) {
-            let interval = point - curr;
-            let max_critical_interval_ratio =
-                interval.as_secs() / self.max_critical_interval.as_secs();
-            if max_critical_interval_ratio >= 1 {
-                for i in 1..=max_critical_interval_ratio {
-                    critical_points.insert(curr + (i as u32) * self.max_critical_interval);
-                }
-            }
-            curr = point;
-        }
-
-        critical_points
+        let idx = self
+            .schedule
+            .tasks
             .iter()
-            .zip(critical_points.iter().skip(1))
-            .map(|(&start, &end)| Interval { start, end })
-            .collect()
-    }
+            .enumerate()
+            .min_by_key(|(_, task)| {
+                Reverse(
+                    self.schedule
+                        .heuristics
+                        .iter()
+                        .map(|heuristic| heuristic.evaluate(task))
+                        .reduce(|a, b| a * b)
+                        .expect("at least one heuristic must be present"),
+                )
+            })?
+            .0;
 
-    // The function finds, for each task chain, the task whose computed interval from the schedule
-    // start or previous task deadline to its deadline overlaps the given interval.
-    fn get_intercepting_tasks(&self, interval: Interval) -> Vec<&Task> {
-        let mut res = Vec::new();
-        for chain in &self.task_chains {
-            let task_deadlines = chain.iter().map(|task| task.deadline);
-
-            let mut task_intervals = iter::once(self.start)
-                .chain(task_deadlines.clone())
-                .zip(task_deadlines)
-                .map(|(start, end)| Interval { start, end });
-
-            if let Some(idx) = task_intervals.position(|i| i.intercepts(interval)) {
-                res.push(&chain[idx])
-            }
-        }
-        res
-    }
-
-    // The function creates a new distribution the tasks in a way that when added to current task
-    // distribution minimizes the distance between the new task distribution and the target task
-    // distribution. The distance is calculated as the sum of the absolute differences between
-    // corresponding elements of the two distributions. Basically it is minkowski distance with p=1.
-    // However, if this distance on some tasks is negative, it is set to 0, since we cannot
-    // un-schedule tasks in the past. If the difference is negligible, it returns the target task
-    // distribution.
-    fn distribute_tasks(
-        &self,
-        current_task_distribution: Vec<f32>,
-        target_task_distribution: Vec<f32>,
-    ) -> Vec<f32> {
-        let res = target_task_distribution
-            .iter()
-            .zip(current_task_distribution)
-            .map(|(pd, d)| (pd - d).max(0.0));
-
-        if res.clone().sum::<f32>() < f32::EPSILON {
-            return target_task_distribution;
-        }
-
-        res.collect::<Vec<_>>().normalize()
-    }
-
-    fn is_intercepting_idle_interval(&self, interval: Interval) -> bool {
-        self.idle_intervals.iter().any(|i| i.intercepts(interval))
-    }
-
-    // The function runs the scheduling algorithm, iterating over the critical intervals and
-    // distributing tasks based on the current and target task distributions.
-    fn run(&self) -> Schedule {
-        let mut schedule = Schedule {
-            inner: HashMap::with_capacity(self.task_chains.iter().map(|c| c.len()).sum()),
-            start: self.start,
-        };
-
-        for interval in self.get_critical_intervals() {
-            let intercepting_tasks = self.get_intercepting_tasks(interval);
-            if self.is_intercepting_idle_interval(interval) {
-                continue;
-            }
-            let current_dist = schedule.get_tasks_distribution(&intercepting_tasks);
-            let target_dist = schedule.get_target_tasks_distribution(&intercepting_tasks);
-            let new_task_dist = self.distribute_tasks(current_dist, target_dist);
-            schedule.schedule_tasks(
-                interval,
-                new_task_dist.into_iter().zip(intercepting_tasks).collect(),
-            );
-        }
-
-        schedule
+        Some((idx, self.schedule.allocator.allocate(self.schedule, idx)))
     }
 }
 
-fn get_test_algorithm(now: Instant) -> ScheduleAlgorithm {
-    let task1_chain = TaskChain(vec![
-        Task {
-            description: "Task 1".to_string(),
-            deadline: now + Duration::new(3600, 0),
-            intensity: 5,
-            granularity: Duration::new(3600, 0),
-        },
-        Task {
-            description: "Task 2".to_string(),
-            deadline: now + Duration::new(7200, 0),
-            intensity: 3,
-            granularity: Duration::new(3600, 0),
-        },
-    ]);
-
-    let task2_chain = TaskChain(vec![
-        Task {
-            description: "Task 3".to_string(),
-            deadline: now + Duration::new(5400, 0),
-            intensity: 4,
-            granularity: Duration::new(3600, 0),
-        },
-        Task {
-            description: "Task 4".to_string(),
-            deadline: now + Duration::new(10800, 0),
-            intensity: 2,
-            granularity: Duration::new(3600, 0),
-        },
-    ]);
-
-    let idle_intervals = vec![
-        Interval {
-            start: now + Duration::new(1800, 0),
-            end: now + Duration::new(3600, 0),
-        },
-        Interval {
-            start: now + Duration::new(7200, 0),
-            end: now + Duration::new(10800, 0),
-        },
-    ];
-
-    ScheduleAlgorithm {
-        start: now,
-        task_chains: vec![task1_chain, task2_chain],
-        idle_intervals,
-        max_critical_interval: Duration::new(1000, 0),
+fn scheduler_iter(schedule: &Schedule, interval: Interval) -> SchedulerIter {
+    SchedulerIter {
+        schedule,
+        current_time: interval.timestamp,
+        interval,
     }
 }
 
 fn main() {
-    let now = Instant::now();
-    let algorithm = get_test_algorithm(now);
-    let schedule = algorithm.run();
+    let (mut schedule, interval) = get_test_schedule();
+    let scheduled_tasks: Vec<_> = scheduler_iter(&schedule, interval).collect();
+    for (task_idx, task_interval) in scheduled_tasks {
+        schedule.entry(task_idx).or_default().push(task_interval);
+    }
     println!("{schedule}");
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn get_test_schedule() -> (Schedule, Interval) {
+    let task1_chain = vec![
+        Task {
+            description: "Task 1".to_string(),
+            deadline: "2025-03-05T12:00Z".parse().unwrap(),
+            granularity: 1.hours(),
+        },
+        Task {
+            description: "Task 2".to_string(),
+            deadline: "2025-03-05T17:00Z".parse().unwrap(),
+            granularity: 1.hours().minutes(30),
+        },
+    ];
 
-    #[test]
-    fn test_critical_interval_generation() {
-        let now = Instant::now();
-        let algorithm = get_test_algorithm(now);
-        let critical_intervals = algorithm.get_critical_intervals();
+    let task2_chain = vec![
+        Task {
+            description: "Task 3".to_string(),
+            deadline: "2025-03-05T13:00Z".parse().unwrap(),
+            granularity: 30.minutes(),
+        },
+        Task {
+            description: "Task 4".to_string(),
+            deadline: "2025-03-05T18:00Z".parse().unwrap(),
+            granularity: 2.hours(),
+        },
+    ];
 
-        assert_eq!(
-            critical_intervals,
-            vec![
-                Interval {
-                    start: now,
-                    end: now + Duration::new(1000, 0)
-                },
-                Interval {
-                    start: now + Duration::new(1000, 0),
-                    end: now + Duration::new(1800, 0)
-                },
-                Interval {
-                    start: now + Duration::new(1800, 0),
-                    end: now + Duration::new(2800, 0)
-                },
-                Interval {
-                    start: now + Duration::new(2800, 0),
-                    end: now + Duration::new(3600, 0)
-                },
-                Interval {
-                    start: now + Duration::new(3600, 0),
-                    end: now + Duration::new(4600, 0)
-                },
-                Interval {
-                    start: now + Duration::new(4600, 0),
-                    end: now + Duration::new(5400, 0)
-                },
-                Interval {
-                    start: now + Duration::new(5400, 0),
-                    end: now + Duration::new(6400, 0)
-                },
-                Interval {
-                    start: now + Duration::new(6400, 0),
-                    end: now + Duration::new(7200, 0)
-                },
-                Interval {
-                    start: now + Duration::new(7200, 0),
-                    end: now + Duration::new(8200, 0)
-                },
-                Interval {
-                    start: now + Duration::new(8200, 0),
-                    end: now + Duration::new(9200, 0)
-                },
-                Interval {
-                    start: now + Duration::new(9200, 0),
-                    end: now + Duration::new(10200, 0)
-                },
-                Interval {
-                    start: now + Duration::new(10200, 0),
-                    end: now + Duration::new(10800, 0)
-                },
-            ]
-        );
-    }
+    let allocator = IdleIntervalAllocator::new(vec![
+        Interval::new("2025-03-05T00:00Z".parse().unwrap(), 9.hours()),
+        Interval::new("2025-03-05T13:00Z".parse().unwrap(), 2.hours()),
+        Interval::new("2025-03-05T22:00Z".parse().unwrap(), 2.hours()),
+    ]);
 
-    #[test]
-    fn test_intercepting_tasks() {
-        let now = Instant::now();
-        let algorithm = get_test_algorithm(now);
-        let critical_interval = algorithm.get_critical_intervals()[5];
+    let mut schedule = Schedule::new(allocator);
 
-        let intercepting_tasks = algorithm.get_intercepting_tasks(critical_interval);
-        assert_eq!(
-            intercepting_tasks,
-            vec![&algorithm.task_chains[0][1], &algorithm.task_chains[1][0],]
-        );
-    }
+    let mut dependencies = HashMap::new();
 
-    #[test]
-    fn test_task_distribution() {
-        let now = Instant::now();
-        let algorithm = get_test_algorithm(now);
-
-        let new_distribution = algorithm.distribute_tasks(
-            vec![0.1, 0.3, 0.1].normalize(),
-            vec![5.0, 3.0, 4.0].normalize(),
-        );
-
-        for (new_distribution, true_new_distribution) in new_distribution
-            .iter()
-            .zip([0.6190476, 0.0, 0.38095242].iter())
-        {
-            assert!((true_new_distribution - new_distribution).abs() < f32::EPSILON);
+    for task_chain in [task1_chain, task2_chain] {
+        let mut prev_task_idx = None;
+        for (idx, task) in task_chain.into_iter().enumerate() {
+            schedule.tasks.push(task);
+            if let Some(prev_task_idx) = prev_task_idx {
+                dependencies.insert(idx, vec![prev_task_idx]);
+            }
+            prev_task_idx = Some(idx);
         }
     }
 
-    #[test]
-    fn test_task_distribution_diff_is_zero() {
-        let now = Instant::now();
-        let algorithm = get_test_algorithm(now);
+    schedule = schedule
+        .add_heuristic(DependencyHeuristic::new(dependencies))
+        .add_heuristic(PriorityHeuristic::new(HashMap::from([
+            (0, 1),
+            (1, 1),
+            (2, 2),
+            (3, 1),
+        ])))
+        .add_heuristic(DeadlineOverVelocityHeuristic::new(HashMap::from([
+            (0, 1.0),
+            (1, 1.5),
+            (2, 1.0),
+            (3, 2.0),
+        ])));
 
-        let new_distribution = algorithm.distribute_tasks(
-            vec![0.1, 0.3, 0.1].normalize(),
-            vec![1.0, 3.0, 1.0].normalize(),
-        );
-
-        for (new_distribution, true_new_distribution) in
-            new_distribution.iter().zip([0.2, 0.6, 0.2].iter())
-        {
-            assert!((true_new_distribution - new_distribution).abs() < f32::EPSILON);
-        }
-    }
+    (
+        schedule,
+        Interval::new("2025-03-05T00:00Z".parse().unwrap(), 24.hours()),
+    )
 }
+
+#[cfg(test)]
+mod tests {}
