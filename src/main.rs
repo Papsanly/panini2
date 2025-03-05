@@ -92,14 +92,15 @@ impl<'a> Schedule<'a> {
         let total_duration = interval.len();
         for (task_time, task) in task_distribution {
             let task_schedule = self.entry(task).or_default();
-            let task_duration = Duration::from_secs_f32(total_duration.as_secs_f32() * task_time);
-            if !task_duration.is_zero() {
-                task_schedule.push(Interval {
-                    start: task_start,
-                    end: task_start + task_duration,
-                });
-                task_start += task_duration
+            if task_time < f32::EPSILON {
+                continue;
             }
+            let task_duration = Duration::from_secs_f32(total_duration.as_secs_f32() * task_time);
+            task_schedule.push(Interval {
+                start: task_start,
+                end: task_start + task_duration,
+            });
+            task_start += task_duration
         }
     }
 }
@@ -145,7 +146,7 @@ impl ScheduleAlgorithm {
 
         critical_points.insert(self.start);
 
-        let curr = self.start;
+        let mut curr = self.start;
         for point in critical_points.clone().into_iter().skip(1) {
             let interval = point - curr;
             let max_critical_interval_ratio =
@@ -155,6 +156,7 @@ impl ScheduleAlgorithm {
                     critical_points.insert(curr + (i as u32) * self.max_critical_interval);
                 }
             }
+            curr = point;
         }
 
         critical_points
@@ -273,7 +275,7 @@ fn get_test_algorithm(now: Instant) -> ScheduleAlgorithm {
         start: now,
         task_chains: vec![task1_chain, task2_chain],
         idle_intervals,
-        max_critical_interval: Duration::new(1800, 0),
+        max_critical_interval: Duration::new(1000, 0),
     }
 }
 
@@ -299,27 +301,51 @@ mod tests {
             vec![
                 Interval {
                     start: now,
-                    end: now + Duration::new(1800, 0),
+                    end: now + Duration::new(1000, 0)
+                },
+                Interval {
+                    start: now + Duration::new(1000, 0),
+                    end: now + Duration::new(1800, 0)
                 },
                 Interval {
                     start: now + Duration::new(1800, 0),
-                    end: now + Duration::new(3600, 0),
+                    end: now + Duration::new(2800, 0)
+                },
+                Interval {
+                    start: now + Duration::new(2800, 0),
+                    end: now + Duration::new(3600, 0)
                 },
                 Interval {
                     start: now + Duration::new(3600, 0),
-                    end: now + Duration::new(5400, 0),
+                    end: now + Duration::new(4600, 0)
+                },
+                Interval {
+                    start: now + Duration::new(4600, 0),
+                    end: now + Duration::new(5400, 0)
                 },
                 Interval {
                     start: now + Duration::new(5400, 0),
-                    end: now + Duration::new(7200, 0),
+                    end: now + Duration::new(6400, 0)
+                },
+                Interval {
+                    start: now + Duration::new(6400, 0),
+                    end: now + Duration::new(7200, 0)
                 },
                 Interval {
                     start: now + Duration::new(7200, 0),
-                    end: now + Duration::new(9000, 0),
+                    end: now + Duration::new(8200, 0)
                 },
                 Interval {
-                    start: now + Duration::new(9000, 0),
-                    end: now + Duration::new(10800, 0),
+                    start: now + Duration::new(8200, 0),
+                    end: now + Duration::new(9200, 0)
+                },
+                Interval {
+                    start: now + Duration::new(9200, 0),
+                    end: now + Duration::new(10200, 0)
+                },
+                Interval {
+                    start: now + Duration::new(10200, 0),
+                    end: now + Duration::new(10800, 0)
                 },
             ]
         );
@@ -329,7 +355,7 @@ mod tests {
     fn test_intercepting_tasks() {
         let now = Instant::now();
         let algorithm = get_test_algorithm(now);
-        let critical_interval = algorithm.get_critical_intervals()[2];
+        let critical_interval = algorithm.get_critical_intervals()[5];
 
         let intercepting_tasks = algorithm.get_intercepting_tasks(critical_interval);
         assert_eq!(
