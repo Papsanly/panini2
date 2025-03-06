@@ -86,11 +86,11 @@ impl Heuristic for DependencyHeuristic {
 }
 
 struct PriorityHeuristic {
-    priorities: HashMap<TaskIdx, i32>,
+    priorities: HashMap<TaskIdx, f32>,
 }
 
 impl PriorityHeuristic {
-    fn new(priorities: HashMap<TaskIdx, i32>) -> Self {
+    fn new(priorities: HashMap<TaskIdx, f32>) -> Self {
         Self { priorities }
     }
 }
@@ -101,17 +101,25 @@ impl Heuristic for PriorityHeuristic {
     }
 }
 
-struct DeadlineOverVelocityHeuristic {
-    velocities: HashMap<TaskIdx, f32>,
-}
+struct DeadlineHeuristic;
 
-impl DeadlineOverVelocityHeuristic {
-    fn new(velocities: HashMap<TaskIdx, f32>) -> Self {
-        Self { velocities }
+impl Heuristic for DeadlineHeuristic {
+    fn evaluate(&self, task: &Task) -> i32 {
+        todo!()
     }
 }
 
-impl Heuristic for DeadlineOverVelocityHeuristic {
+struct VolumeHeuristic {
+    volumes: HashMap<TaskIdx, f32>,
+}
+
+impl VolumeHeuristic {
+    fn new(volumes: HashMap<TaskIdx, f32>) -> Self {
+        Self { volumes }
+    }
+}
+
+impl Heuristic for VolumeHeuristic {
     fn evaluate(&self, task: &Task) -> i32 {
         todo!()
     }
@@ -252,17 +260,18 @@ fn get_test_schedule() -> (Schedule, Interval) {
 
     schedule = schedule
         .add_heuristic(DependencyHeuristic::new(dependencies))
+        .add_heuristic(DeadlineHeuristic)
         .add_heuristic(PriorityHeuristic::new(HashMap::from([
-            (0, 1),
-            (1, 1),
-            (2, 2),
-            (3, 1),
-        ])))
-        .add_heuristic(DeadlineOverVelocityHeuristic::new(HashMap::from([
             (0, 1.0),
-            (1, 1.5),
-            (2, 1.0),
-            (3, 2.0),
+            (1, 1.0),
+            (2, 2.0),
+            (3, 1.0),
+        ])))
+        .add_heuristic(VolumeHeuristic::new(HashMap::from([
+            (0, 1.0),
+            (1, 0.5),
+            (2, 0.5),
+            (3, 1.0),
         ])));
 
     (

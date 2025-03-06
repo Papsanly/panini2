@@ -29,7 +29,8 @@ determine available intervals for tasks based on constraints.
 guide the selection of the next task to schedule. multiple heuristics combine multiplicatively.
 
 - priority heuristic: tasks with higher priority values are scheduled earlier.
-- deadline-over-velocity heuristic: considers task deadline relative to complexity or expected duration.
+- deadline heuristic: considers task deadline.
+- volume heuristic: considers the amount of time required to complete the task.
 - dependency heuristic: prevents scheduling tasks before their dependencies are satisfied.
 
 ### algorithm workflow:
