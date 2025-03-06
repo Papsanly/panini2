@@ -73,7 +73,6 @@ impl<'a> Iterator for SchedulerIter<'a> {
         let mut heuristic_scores = vec![1.0; self.schedule.tasks.len()];
 
         for heuristic in &self.schedule.heuristics {
-            heuristic_scores = heuristic_scores.normalize();
             for (task_idx, score) in heuristic_scores.iter_mut().enumerate() {
                 *score *= heuristic(self.schedule, self.current_time, task_idx);
             }

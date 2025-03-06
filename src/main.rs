@@ -1,7 +1,6 @@
 mod allocators;
 mod heuristics;
 mod interval;
-mod normalize;
 mod schedule;
 
 use crate::{
