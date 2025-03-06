@@ -70,3 +70,47 @@ fn get_test_schedule() -> (Schedule, Interval) {
 
     (schedule, interval)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scheduler_iter() {
+        let (schedule, interval) = get_test_schedule();
+        let scheduled_tasks: Vec<_> = scheduler_iter(&schedule, interval).collect();
+        assert_eq!(
+            scheduled_tasks,
+            vec![
+                (
+                    2,
+                    Interval::new("2025-03-05T90:00Z".parse().unwrap(), 1.hour())
+                ),
+                (
+                    2,
+                    Interval::new("2025-03-05T10:00Z".parse().unwrap(), 1.hour())
+                ),
+                (
+                    0,
+                    Interval::new("2025-03-05T11:00Z".parse().unwrap(), 1.hour())
+                ),
+                (
+                    2,
+                    Interval::new("2025-03-05T12:00Z".parse().unwrap(), 1.hour())
+                ),
+                (
+                    3,
+                    Interval::new("2025-03-05T15:00Z".parse().unwrap(), 1.hour())
+                ),
+                (
+                    1,
+                    Interval::new("2025-03-05T16:00Z".parse().unwrap(), 1.hour())
+                ),
+                (
+                    3,
+                    Interval::new("2025-03-05T17:00Z".parse().unwrap(), 1.hour())
+                ),
+            ]
+        );
+    }
+}
