@@ -1,7 +1,7 @@
 use derive_more::{Deref, DerefMut};
 use jiff::{Span, Timestamp, ToSpan};
 use std::{
-    cmp::Reverse,
+    cmp::{Ordering, Reverse},
     collections::HashMap,
     fmt::{self, Display, Formatter},
 };
@@ -66,7 +66,7 @@ impl TaskAllocator for IdleIntervalAllocator {
 }
 
 trait Heuristic {
-    fn evaluate(&self, task: &Task) -> i32;
+    fn evaluate(&self, schedule: &Schedule, task: &Task) -> f32;
 }
 
 struct DependencyHeuristic {
@@ -80,7 +80,7 @@ impl DependencyHeuristic {
 }
 
 impl Heuristic for DependencyHeuristic {
-    fn evaluate(&self, task: &Task) -> i32 {
+    fn evaluate(&self, schedule: &Schedule, task: &Task) -> f32 {
         todo!()
     }
 }
@@ -96,7 +96,7 @@ impl PriorityHeuristic {
 }
 
 impl Heuristic for PriorityHeuristic {
-    fn evaluate(&self, task: &Task) -> i32 {
+    fn evaluate(&self, schedule: &Schedule, task: &Task) -> f32 {
         todo!()
     }
 }
@@ -104,7 +104,7 @@ impl Heuristic for PriorityHeuristic {
 struct DeadlineHeuristic;
 
 impl Heuristic for DeadlineHeuristic {
-    fn evaluate(&self, task: &Task) -> i32 {
+    fn evaluate(&self, schedule: &Schedule, task: &Task) -> f32 {
         todo!()
     }
 }
@@ -120,7 +120,7 @@ impl VolumeHeuristic {
 }
 
 impl Heuristic for VolumeHeuristic {
-    fn evaluate(&self, task: &Task) -> i32 {
+    fn evaluate(&self, schedule: &Schedule, task: &Task) -> f32 {
         todo!()
     }
 }
@@ -172,21 +172,20 @@ impl<'a> Iterator for SchedulerIter<'a> {
             return None;
         }
 
-        let idx = self
-            .schedule
-            .tasks
+        let mut heuristic_scores = vec![1.0; self.schedule.tasks.len()];
+
+        for heuristic in &self.schedule.heuristics {
+            heuristic_scores = heuristic_scores.normalize();
+            for (score, task) in heuristic_scores.iter_mut().zip(self.schedule.tasks.iter()) {
+                *score *= heuristic.evaluate(self.schedule, task);
+            }
+        }
+
+        let idx = heuristic_scores
             .iter()
             .enumerate()
-            .min_by_key(|(_, task)| {
-                Reverse(
-                    self.schedule
-                        .heuristics
-                        .iter()
-                        .map(|heuristic| heuristic.evaluate(task))
-                        .reduce(|a, b| a * b)
-                        .expect("at least one heuristic must be present"),
-                )
-            })?
+            .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Less).reverse())
+            .unwrap()
             .0;
 
         Some((idx, self.schedule.allocator.allocate(self.schedule, idx)))
