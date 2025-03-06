@@ -5,7 +5,7 @@ mod normalize;
 mod schedule;
 
 use crate::{
-    allocators::IdleIntervalAllocator,
+    allocators::TaskAllocator,
     interval::Interval,
     schedule::{scheduler_iter, Schedule, Task},
 };

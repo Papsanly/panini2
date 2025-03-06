@@ -1,8 +1,6 @@
-use crate::{
-    allocators::TaskAllocator, heuristics::Heuristic, interval::Interval, normalize::Normalize,
-};
+use crate::{allocators::TaskAllocator, heuristics::Heuristic, interval::Interval};
 use derive_more::{Deref, DerefMut};
-use jiff::{Span, Timestamp};
+use jiff::Timestamp;
 use std::{
     cmp::Ordering,
     collections::HashMap,
@@ -27,16 +25,16 @@ pub struct Schedule {
     #[deref_mut]
     inner: HashMap<TaskIdx, Vec<Interval>>,
     tasks: Vec<Task>,
-    allocator: Box<dyn TaskAllocator>,
+    allocator: TaskAllocator,
     heuristics: Vec<Heuristic>,
 }
 
 impl Schedule {
-    pub fn new(allocator: impl TaskAllocator + 'static, tasks: Vec<Task>) -> Self {
+    pub fn new(allocator: TaskAllocator, tasks: Vec<Task>) -> Self {
         Self {
             inner: HashMap::new(),
             tasks,
-            allocator: Box::new(allocator),
+            allocator,
             heuristics: Vec::new(),
         }
     }
