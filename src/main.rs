@@ -1,7 +1,7 @@
 use derive_more::{Deref, DerefMut};
 use jiff::{Span, Timestamp, ToSpan};
 use std::{
-    cmp::{Ordering, Reverse},
+    cmp::Ordering,
     collections::HashMap,
     fmt::{self, Display, Formatter},
 };
@@ -48,14 +48,17 @@ trait TaskAllocator {
     fn allocate(&self, schedule: &Schedule, task_idx: TaskIdx) -> Interval;
 }
 
-// this is a task allocator which takes into account idle intervals where tasks cannot be placed
 struct IdleIntervalAllocator {
+    current_time: Timestamp,
     idle_intervals: Vec<Interval>,
 }
 
 impl IdleIntervalAllocator {
-    fn new(idle_intervals: Vec<Interval>) -> Self {
-        Self { idle_intervals }
+    fn new(current_time: Timestamp, idle_intervals: Vec<Interval>) -> Self {
+        Self {
+            current_time,
+            idle_intervals,
+        }
     }
 }
 
@@ -188,7 +191,11 @@ impl<'a> Iterator for SchedulerIter<'a> {
             .unwrap()
             .0;
 
-        Some((idx, self.schedule.allocator.allocate(self.schedule, idx)))
+        let interval = self.schedule.allocator.allocate(self.schedule, idx);
+
+        self.current_time = interval.end();
+
+        Some((idx, interval))
     }
 }
 
@@ -236,11 +243,16 @@ fn get_test_schedule() -> (Schedule, Interval) {
         },
     ];
 
-    let allocator = IdleIntervalAllocator::new(vec![
-        Interval::new("2025-03-05T00:00Z".parse().unwrap(), 9.hours()),
-        Interval::new("2025-03-05T13:00Z".parse().unwrap(), 2.hours()),
-        Interval::new("2025-03-05T22:00Z".parse().unwrap(), 2.hours()),
-    ]);
+    let interval = Interval::new("2025-03-05T00:00Z".parse().unwrap(), 24.hours());
+
+    let allocator = IdleIntervalAllocator::new(
+        interval.timestamp,
+        vec![
+            Interval::new("2025-03-05T00:00Z".parse().unwrap(), 9.hours()),
+            Interval::new("2025-03-05T13:00Z".parse().unwrap(), 2.hours()),
+            Interval::new("2025-03-05T22:00Z".parse().unwrap(), 2.hours()),
+        ],
+    );
 
     let mut schedule = Schedule::new(allocator);
 
@@ -273,10 +285,7 @@ fn get_test_schedule() -> (Schedule, Interval) {
             (3, 1.0),
         ])));
 
-    (
-        schedule,
-        Interval::new("2025-03-05T00:00Z".parse().unwrap(), 24.hours()),
-    )
+    (schedule, interval)
 }
 
 #[cfg(test)]
