@@ -1,4 +1,4 @@
-# task scheduling algorithm
+# a task scheduling algorithm
 
 ## requirements
 
