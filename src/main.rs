@@ -22,56 +22,51 @@ fn main() {
 fn get_test_schedule() -> (Schedule, Interval) {
     let tasks = vec![
         Task {
-            description: "Task 1".to_string(),
+            description: "Task 0".to_string(),
             deadline: "2025-03-05T12:00Z".parse().unwrap(),
-            granularity: 1.hours(),
             priority: 1.0,
             volume: 1.0,
             dependencies: vec![],
         },
         Task {
-            description: "Task 2".to_string(),
+            description: "Task 1".to_string(),
             deadline: "2025-03-05T17:00Z".parse().unwrap(),
-            granularity: 1.hours().minutes(30),
             priority: 1.0,
             volume: 3.0,
             dependencies: vec![0],
         },
         Task {
-            description: "Task 3".to_string(),
+            description: "Task 2".to_string(),
             deadline: "2025-03-05T13:00Z".parse().unwrap(),
-            granularity: 30.minutes(),
             priority: 2.0,
             volume: 0.5,
             dependencies: vec![],
         },
         Task {
-            description: "Task 4".to_string(),
+            description: "Task 3".to_string(),
             deadline: "2025-03-05T18:00Z".parse().unwrap(),
-            granularity: 2.hours(),
             priority: 1.0,
             volume: 1.5,
             dependencies: vec![2],
         },
     ];
 
-    let interval = Interval::new("2025-03-05T00:00Z".parse().unwrap(), 24.hours());
+    let allocator = TaskAllocator {
+        idle_intervals: vec![
+            Interval::new("2025-03-05T00:00Z".parse().unwrap(), 9.hours()),
+            Interval::new("2025-03-05T13:00Z".parse().unwrap(), 2.hours()),
+            Interval::new("2025-03-05T22:00Z".parse().unwrap(), 2.hours()),
+        ],
+        granularity: 1.hour(),
+    };
 
-    let idle_intervals = vec![
-        Interval::new("2025-03-05T00:00Z".parse().unwrap(), 9.hours()),
-        Interval::new("2025-03-05T13:00Z".parse().unwrap(), 2.hours()),
-        Interval::new("2025-03-05T22:00Z".parse().unwrap(), 2.hours()),
-    ];
-
-    let allocator = IdleIntervalAllocator::new(idle_intervals);
-
-    let mut schedule = Schedule::new(allocator, tasks);
-
-    schedule = schedule
-        .add_heuristic(heuristics::deadline)
+    let schedule = Schedule::new(allocator, tasks)
         .add_heuristic(heuristics::dependency)
-        .add_heuristic(heuristics::priority)
-        .add_heuristic(heuristics::volume);
+        .add_heuristic(heuristics::volume)
+        .add_heuristic(heuristics::deadline)
+        .add_heuristic(heuristics::priority);
+
+    let interval = Interval::new("2025-03-05T00:00Z".parse().unwrap(), 24.hours());
 
     (schedule, interval)
 }

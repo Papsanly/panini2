@@ -11,7 +11,6 @@ use std::{
 pub struct Task {
     pub description: String,
     pub deadline: Timestamp,
-    pub granularity: Span,
     pub priority: f32,
     pub volume: f32,
     pub dependencies: Vec<TaskIdx>,
