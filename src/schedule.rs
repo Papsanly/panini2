@@ -64,6 +64,10 @@ pub struct SchedulerIter<'a> {
 
 impl<'a> Iterator for SchedulerIter<'a> {
     type Item = (TaskIdx, Interval);
+
+    // works by iterating over the tasks and applying heuristics to them. the task with the highest
+    // heuristic score will be selected for scheduling. the heuristic scores are multiplied
+    // together. allocator will allocate the interval for the task to be scheduled on.
     fn next(&mut self) -> Option<Self::Item> {
         if self.current_time >= self.interval.end() {
             return None;
