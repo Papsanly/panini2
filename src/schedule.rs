@@ -3,7 +3,7 @@ use derive_more::{Deref, DerefMut};
 use jiff::{
     civil::{Date, Weekday},
     tz::TimeZone,
-    Span, Timestamp, ToSpan, Unit, Zoned,
+    Timestamp, ToSpan, Unit, Zoned,
 };
 use std::{
     cmp::Ordering,
