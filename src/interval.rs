@@ -23,7 +23,7 @@ impl Interval {
     }
 
     pub fn end(&self) -> Timestamp {
-        self.timestamp + self.span
+        (&self.timestamp.to_zoned(TimeZone::system()) + self.span).timestamp()
     }
 
     pub fn intercepts(&self, other: &Self) -> bool {
