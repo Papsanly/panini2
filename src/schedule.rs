@@ -1,11 +1,12 @@
 use crate::{allocators::TaskAllocator, heuristics::Heuristic, interval::Interval};
 use derive_more::{Deref, DerefMut};
-use jiff::Timestamp;
+use jiff::{tz::TimeZone, Timestamp, Unit};
 use std::{
     cmp::Ordering,
     collections::HashMap,
     fmt,
     fmt::{Display, Formatter},
+    str::FromStr,
 };
 
 pub struct Task {
@@ -23,62 +24,43 @@ pub struct Schedule {
     #[deref]
     #[deref_mut]
     inner: HashMap<TaskIdx, Vec<Interval>>,
-    tasks: Vec<Task>,
+    pub tasks: Vec<Task>,
     allocator: TaskAllocator,
+    pub interval: Interval,
+    pub current_time: Timestamp,
     heuristics: Vec<Heuristic>,
 }
 
 impl Schedule {
-    pub fn new(allocator: TaskAllocator, tasks: Vec<Task>) -> Self {
+    pub fn new(allocator: TaskAllocator, tasks: Vec<Task>, interval: Interval) -> Self {
         Self {
             inner: HashMap::new(),
             tasks,
             allocator,
+            current_time: interval.timestamp,
+            interval,
             heuristics: Vec::new(),
         }
     }
 
-    pub fn add_heuristic(mut self, heuristic: Heuristic) -> Self {
-        self.heuristics.push(heuristic);
-        self
-    }
-
-    pub fn get_task(&self, idx: TaskIdx) -> &Task {
-        self.tasks
-            .get(idx)
-            .expect("Task index should not be out of bounds")
-    }
-}
-
-impl Display for Schedule {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        todo!()
-    }
-}
-
-pub struct SchedulerIter<'a> {
-    schedule: &'a Schedule,
-    interval: Interval,
-    current_time: Timestamp,
-}
-
-impl<'a> Iterator for SchedulerIter<'a> {
-    type Item = (TaskIdx, Interval);
-
     // works by iterating over the tasks and applying heuristics to them. the task with the highest
     // heuristic score will be selected for scheduling. the heuristic scores are multiplied
     // together. allocator will allocate the interval for the task to be scheduled on.
-    fn next(&mut self) -> Option<Self::Item> {
+    pub fn next(&mut self) -> Option<(TaskIdx, Interval)> {
         if self.current_time >= self.interval.end() {
             return None;
         }
 
-        let mut heuristic_scores = vec![1.0; self.schedule.tasks.len()];
+        let mut heuristic_scores = vec![1.0; self.tasks.len()];
 
-        for heuristic in &self.schedule.heuristics {
+        for heuristic in &self.heuristics {
             for (task_idx, score) in heuristic_scores.iter_mut().enumerate() {
-                *score *= heuristic(self.schedule, self.current_time, task_idx);
+                *score *= heuristic(self, self.current_time, task_idx);
             }
+        }
+
+        if heuristic_scores.iter().sum::<f32>() == 0.0 {
+            return None;
         }
 
         let idx = heuristic_scores
@@ -88,21 +70,94 @@ impl<'a> Iterator for SchedulerIter<'a> {
             .unwrap()
             .0;
 
-        let interval = self
-            .schedule
-            .allocator
-            .allocate(self.schedule, self.current_time, idx);
+        let interval = self.allocator.allocate(self, self.current_time, idx);
 
         self.current_time = interval.end();
 
         Some((idx, interval))
     }
+
+    pub fn add_heuristic(mut self, heuristic: Heuristic) -> Self {
+        self.heuristics.push(heuristic);
+        self
+    }
+
+    pub fn get_total_task_hours(&self, task_idx: TaskIdx) -> f32 {
+        self.inner
+            .get(&task_idx)
+            .map(|intervals| {
+                intervals
+                    .iter()
+                    .map(|interval| {
+                        interval
+                            .span
+                            .total((Unit::Hour, &interval.timestamp.to_zoned(TimeZone::system())))
+                            .unwrap()
+                    })
+                    .sum::<f64>()
+            })
+            .unwrap_or(0.0) as f32
+    }
+
+    pub fn get_idle_hours(&self, interval: Interval) -> f32 {
+        self.allocator
+            .idle_intervals
+            .iter()
+            .filter(|idle_interval| idle_interval.intercepts(&interval))
+            .map(|idle_interval| {
+                idle_interval
+                    .span
+                    .total((
+                        Unit::Hour,
+                        &idle_interval.timestamp.to_zoned(TimeZone::system()),
+                    ))
+                    .unwrap()
+            })
+            .sum::<f64>() as f32
+    }
 }
 
-pub fn scheduler_iter(schedule: &Schedule, interval: Interval) -> SchedulerIter {
-    SchedulerIter {
-        schedule,
-        current_time: interval.timestamp,
-        interval,
+#[derive(Debug)]
+pub struct ScheduleParsingError;
+
+impl FromStr for Schedule {
+    type Err = ScheduleParsingError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        todo!()
+    }
+}
+
+impl Display for Schedule {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let mut all_intervals = Vec::new();
+        for (task_idx, intervals) in self.iter() {
+            for interval in intervals {
+                all_intervals.push((task_idx, interval.clone()));
+            }
+        }
+
+        all_intervals.sort_by_key(|(_, interval)| interval.timestamp);
+
+        for (task_idx, interval) in all_intervals {
+            let task = &self.tasks[*task_idx];
+            writeln!(
+                f,
+                "Task {}: {} - {} ({} {})",
+                task.description,
+                interval.timestamp,
+                interval.end(),
+                interval
+                    .span
+                    .total((Unit::Hour, &interval.timestamp.to_zoned(TimeZone::system())))
+                    .unwrap(),
+                if interval.span.total(Unit::Hour).unwrap() == 1.0 {
+                    "hour"
+                } else {
+                    "hours"
+                }
+            )?;
+        }
+
+        Ok(())
     }
 }
