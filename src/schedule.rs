@@ -3,7 +3,7 @@ use derive_more::{Deref, DerefMut};
 use jiff::{
     civil::{Date, Weekday},
     tz::TimeZone,
-    Timestamp, ToSpan, Unit, Zoned,
+    RoundMode, Timestamp, ToSpan, Unit, ZonedRound,
 };
 use std::{
     cmp::Ordering,
@@ -11,6 +11,7 @@ use std::{
     error::Error,
     fmt,
     fmt::{Display, Formatter},
+    hash::Hash,
     str::FromStr,
 };
 
@@ -142,7 +143,7 @@ impl FromStr for Schedule {
             }
 
             let parts: Vec<&str> = line.split('/').map(|p| p.trim()).collect();
-            let [description, deadline, volume, priority]: [&str; 4] =
+            let [description, deadline, volume, completion]: [&str; 4] =
                 parts.as_slice().try_into()?;
 
             let mut task = Task {
@@ -150,8 +151,9 @@ impl FromStr for Schedule {
                 deadline: Date::strptime("%F", deadline)?
                     .to_zoned(TimeZone::system())?
                     .timestamp(),
-                priority: priority.parse::<u32>()? as f32,
-                volume: volume[..volume.len() - 1].parse::<u32>()? as f32,
+                priority: 1.0,
+                volume: volume[..volume.len() - 1].parse::<u32>()? as f32
+                    * (1.0 - completion[..completion.len() - 1].parse::<u32>()? as f32 / 100.0),
                 dependencies: Vec::new(),
             };
 
@@ -165,7 +167,12 @@ impl FromStr for Schedule {
         }
 
         // todo: generate allocator config from .alloc file
-        let interval = Interval::new(Zoned::now().round(Unit::Day)?.timestamp(), 1.month());
+        let interval = Interval::new(
+            Date::strptime("%F", "2025-03-07")?
+                .to_zoned(TimeZone::system())?
+                .timestamp(),
+            1.month(),
+        );
 
         let mut idle_intervals = Vec::new();
 
@@ -178,9 +185,8 @@ impl FromStr for Schedule {
             if zoned.weekday() == Weekday::Sunday {
                 idle_intervals.push(Interval::new(zoned.timestamp(), 1.day()));
             } else {
-                idle_intervals.push(Interval::new(zoned.timestamp(), 11.hours()));
-                idle_intervals.push(Interval::new(zoned.timestamp() + 13.hour(), 1.hours()));
-                idle_intervals.push(Interval::new(zoned.timestamp() + 17.hour(), 1.hours()));
+                idle_intervals.push(Interval::new(zoned.timestamp(), 12.hours()));
+                idle_intervals.push(Interval::new(zoned.timestamp() + 17.hour(), 2.hours()));
                 idle_intervals.push(Interval::new(zoned.timestamp() + 22.hour(), 2.hours()));
             }
         }
@@ -191,6 +197,22 @@ impl FromStr for Schedule {
         };
 
         Ok(Self::new(allocator, tasks, interval))
+    }
+}
+
+trait GroupBy<K, V> {
+    fn group_by(self, key_fn: impl Fn(&V) -> K) -> HashMap<K, Vec<V>>;
+}
+
+impl<K: Hash + Eq, V: Clone, I: Iterator<Item = V>> GroupBy<K, V> for I {
+    fn group_by(self, key_fn: impl Fn(&V) -> K) -> HashMap<K, Vec<V>> {
+        let mut res: HashMap<K, Vec<V>> = HashMap::new();
+        for item in self {
+            let key = key_fn(&item);
+            res.entry(key).or_default().push(item);
+        }
+
+        res
     }
 }
 
@@ -205,24 +227,36 @@ impl Display for Schedule {
 
         all_intervals.sort_by_key(|(_, interval)| interval.timestamp);
 
-        for (task_idx, interval) in all_intervals {
-            let task = &self.tasks[*task_idx];
-            writeln!(
-                f,
-                "Task {}: {} - {} ({} {})",
-                task.description,
-                interval.timestamp,
-                interval.end(),
+        let mut all_intervals_grouped = all_intervals
+            .into_iter()
+            .group_by(|(_, interval)| {
                 interval
-                    .span
-                    .total((Unit::Hour, &interval.timestamp.to_zoned(TimeZone::system())))
-                    .unwrap(),
-                if interval.span.total(Unit::Hour).unwrap() == 1.0 {
-                    "hour"
-                } else {
-                    "hours"
-                }
-            )?;
+                    .timestamp
+                    .to_zoned(TimeZone::system())
+                    .round(ZonedRound::new().smallest(Unit::Day).mode(RoundMode::Trunc))
+                    .unwrap()
+            })
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        all_intervals_grouped.sort_by_key(|(day, _)| day.clone());
+
+        for (day, mut task_intervals) in all_intervals_grouped {
+            writeln!(f, "{}:", day.strftime("%F"))?;
+            task_intervals.sort_by_key(|(_, interval)| interval.timestamp);
+            for (task_idx, interval) in task_intervals {
+                let task = &self.tasks[*task_idx];
+                writeln!(
+                    f,
+                    "    {}: {} - {}",
+                    task.description,
+                    interval
+                        .timestamp
+                        .to_zoned(TimeZone::system())
+                        .strftime("%R"),
+                    interval.end().to_zoned(TimeZone::system()).strftime("%R"),
+                )?;
+            }
         }
 
         Ok(())
