@@ -33,10 +33,6 @@ pub fn deadline(schedule: &Schedule, current_time: Timestamp, task_idx: TaskIdx)
         .total((Unit::Hour, &current_time.to_zoned(TimeZone::system())))
         .unwrap() as f32;
 
-    if total_hours <= 0.0 {
-        return 0.0;
-    }
-
     let idle_hours = schedule.get_idle_hours(Interval::new(current_time, total));
 
     let working_hours = total_hours - idle_hours;
