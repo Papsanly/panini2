@@ -1,9 +1,14 @@
 use crate::{allocators::TaskAllocator, heuristics::Heuristic, interval::Interval};
 use derive_more::{Deref, DerefMut};
-use jiff::{tz::TimeZone, Timestamp, Unit};
+use jiff::{
+    civil::{Date, Weekday},
+    tz::TimeZone,
+    Span, Timestamp, ToSpan, Unit, Zoned,
+};
 use std::{
     cmp::Ordering,
     collections::HashMap,
+    error::Error,
     fmt,
     fmt::{Display, Formatter},
     str::FromStr,
@@ -117,13 +122,75 @@ impl Schedule {
     }
 }
 
-#[derive(Debug)]
-pub struct ScheduleParsingError;
-
 impl FromStr for Schedule {
-    type Err = ScheduleParsingError;
+    type Err = Box<dyn Error>;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        todo!()
+        let lines = s.split('\n');
+        let mut tasks = Vec::new();
+
+        let mut idx = 0;
+        let mut has_dependency = false;
+        for line in lines {
+            if line.trim().is_empty() {
+                has_dependency = false;
+                continue;
+            }
+
+            if line.trim() == "|" {
+                has_dependency = true;
+                continue;
+            }
+
+            let parts: Vec<&str> = line.split('/').map(|p| p.trim()).collect();
+            let [description, deadline, volume, priority]: [&str; 4] =
+                parts.as_slice().try_into()?;
+
+            let mut task = Task {
+                description: description.to_string(),
+                deadline: Date::strptime("%F", deadline)?
+                    .to_zoned(TimeZone::system())?
+                    .timestamp(),
+                priority: priority.parse::<u32>()? as f32,
+                volume: volume[..volume.len() - 1].parse::<u32>()? as f32,
+                dependencies: Vec::new(),
+            };
+
+            if has_dependency {
+                task.dependencies = vec![idx];
+            }
+
+            tasks.push(task);
+
+            idx = tasks.len() - 1;
+        }
+
+        // todo: generate allocator config from .alloc file
+        let interval = Interval::new(Zoned::now().round(Unit::Day)?.timestamp(), 1.month());
+
+        let mut idle_intervals = Vec::new();
+
+        for day in 0..interval
+            .span
+            .total((Unit::Day, &interval.timestamp.to_zoned(TimeZone::system())))
+            .unwrap() as i32
+        {
+            let zoned = &interval.timestamp.to_zoned(TimeZone::system()) + day.days();
+            if zoned.weekday() == Weekday::Sunday {
+                idle_intervals.push(Interval::new(zoned.timestamp(), 1.day()));
+            } else {
+                idle_intervals.push(Interval::new(zoned.timestamp(), 11.hours()));
+                idle_intervals.push(Interval::new(zoned.timestamp() + 13.hour(), 1.hours()));
+                idle_intervals.push(Interval::new(zoned.timestamp() + 17.hour(), 1.hours()));
+                idle_intervals.push(Interval::new(zoned.timestamp() + 22.hour(), 2.hours()));
+            }
+        }
+
+        let allocator = TaskAllocator {
+            granularity: 1.hour(),
+            idle_intervals,
+        };
+
+        Ok(Self::new(allocator, tasks, interval))
     }
 }
 
