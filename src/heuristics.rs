@@ -49,6 +49,17 @@ pub fn volume(schedule: &Schedule, _current_time: Timestamp, task_idx: TaskIdx) 
     task.volume - schedule.get_total_task_hours(task_idx)
 }
 
+pub fn locality(schedule: &Schedule, _current_time: Timestamp, task_idx: TaskIdx) -> f32 {
+    let Some(previous_task) = schedule.get_last_task() else {
+        return 1.0;
+    };
+    if previous_task == task_idx {
+        2.0
+    } else {
+        1.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

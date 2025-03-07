@@ -83,6 +83,17 @@ impl Schedule {
         Some((idx, interval))
     }
 
+    pub fn get_last_task(&self) -> Option<TaskIdx> {
+        self.iter()
+            .max_by_key(|(_, intervals)| {
+                intervals
+                    .iter()
+                    .max_by_key(|interval| interval.end())
+                    .map(|interval| interval.end())
+            })
+            .map(|(task_idx, _)| *task_idx)
+    }
+
     pub fn add_heuristic(mut self, heuristic: Heuristic) -> Self {
         self.heuristics.push(heuristic);
         self
