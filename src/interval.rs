@@ -25,4 +25,8 @@ impl Interval {
     pub fn end(&self) -> Timestamp {
         self.timestamp + self.span
     }
+
+    pub fn intercepts(&self, other: &Self) -> bool {
+        self.timestamp < other.end() && other.timestamp < self.end()
+    }
 }
