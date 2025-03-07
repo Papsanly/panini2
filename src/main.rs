@@ -9,9 +9,18 @@ use crate::{
     schedule::{Schedule, Task},
 };
 use jiff::ToSpan;
+use std::fs;
+
+const TASKS_FILE: &str = "data/my.tasks";
+const SCHEDULE_FILE: &str = "data/my.schedule";
 
 fn main() {
-    let mut schedule = get_test_schedule();
+    let mut schedule: Schedule = fs::read_to_string(TASKS_FILE).unwrap().parse().unwrap();
+    schedule = schedule
+        .add_heuristic(heuristics::dependency)
+        .add_heuristic(heuristics::volume)
+        .add_heuristic(heuristics::deadline)
+        .add_heuristic(heuristics::priority);
     loop {
         let next_item = schedule.next();
         match next_item {
@@ -21,10 +30,11 @@ fn main() {
             None => break,
         }
     }
-    println!("{schedule}");
+
+    fs::write(SCHEDULE_FILE, schedule.to_string()).unwrap();
 }
 
-fn get_test_schedule() -> Schedule {
+pub fn get_test_schedule() -> Schedule {
     let tasks = vec![
         Task {
             description: "Task 0".to_string(),
