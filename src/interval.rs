@@ -1,32 +1,43 @@
-use jiff::{tz::TimeZone, Span, Timestamp};
+use jiff::{tz::TimeZone, Span, Timestamp, Unit};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub struct Interval {
-    pub timestamp: Timestamp,
-    pub span: Span,
-}
-
-impl PartialEq for Interval {
-    fn eq(&self, other: &Self) -> bool {
-        self.timestamp == other.timestamp
-            && self
-                .span
-                .compare((other.span, &self.timestamp.to_zoned(TimeZone::system())))
-                .unwrap()
-                .is_eq()
-    }
+    pub start: Timestamp,
+    pub end: Timestamp,
 }
 
 impl Interval {
-    pub fn new(timestamp: Timestamp, span: Span) -> Self {
-        Self { timestamp, span }
+    pub fn new(start: Timestamp, end: Timestamp) -> Self {
+        Self { start, end }
     }
 
-    pub fn end(&self) -> Timestamp {
-        (&self.timestamp.to_zoned(TimeZone::system()) + self.span).timestamp()
+    pub fn from_span(start: Timestamp, span: Span) -> Self {
+        Self {
+            start,
+            end: start + span,
+        }
+    }
+
+    pub fn move_to(&mut self, start: Timestamp) {
+        self.end += start - self.start;
+        self.start = start;
+    }
+
+    pub fn span(&self) -> Span {
+        self.end - self.start
+    }
+
+    pub fn hours(&self) -> f32 {
+        self.span()
+            .total((Unit::Hour, &self.start.to_zoned(TimeZone::system())))
+            .expect("Failed to convert span to hours") as f32
+    }
+
+    pub fn set_span(&mut self, span: Span) {
+        self.end = self.start + span;
     }
 
     pub fn intercepts(&self, other: &Self) -> bool {
-        self.timestamp < other.end() && other.timestamp < self.end()
+        self.start < other.end && other.start < self.end
     }
 }

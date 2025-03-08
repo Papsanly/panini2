@@ -31,11 +31,12 @@ pub fn deadline(schedule: &Schedule, current_time: Timestamp, task_idx: TaskIdx)
     let total = task.deadline - current_time;
     let total_hours = total
         .total((Unit::Hour, &current_time.to_zoned(TimeZone::system())))
-        .unwrap() as f32;
+        .expect("Failed to convert total to hours") as f32;
 
-    let idle_hours = schedule.get_idle_hours(Interval::new(current_time, total));
+    let planned_hours =
+        schedule.get_planned_hours(Interval::new(current_time, current_time + total));
 
-    let working_hours = total_hours - idle_hours;
+    let working_hours = total_hours - planned_hours;
     if working_hours <= 0.0 {
         return 0.0;
     }
@@ -70,7 +71,7 @@ mod tests {
     fn test_dependency_heuristic() {
         let mut schedule = get_test_schedule();
         let task_idx = 0;
-        let current_time = schedule.interval.timestamp;
+        let current_time = schedule.interval.start;
 
         let score = dependency(&schedule, current_time, task_idx);
         assert_eq!(score, 1.0);
@@ -79,7 +80,7 @@ mod tests {
         let score = dependency(&schedule, current_time, task_idx);
         assert_eq!(score, 0.0);
 
-        let current_time = schedule.interval.timestamp + 12.hours();
+        let current_time = schedule.interval.start + 12.hours();
         let score = dependency(&schedule, current_time, task_idx);
         assert_eq!(score, 1.0);
 
@@ -88,13 +89,13 @@ mod tests {
         assert_eq!(score, 1.0);
 
         let task_idx = 0;
-        let current_time = schedule.interval.timestamp + 9.hours();
-        schedule
-            .entry(task_idx)
-            .or_default()
-            .push(Interval::new(current_time, 2.hours()));
+        let current_time = schedule.interval.start + 9.hours();
+        schedule.schedule_task(
+            task_idx,
+            Interval::new(current_time, current_time + 2.hours()),
+        );
         let task_idx = 1;
-        let current_time = schedule.interval.timestamp + 11.hours();
+        let current_time = schedule.interval.start + 11.hours();
         let score = dependency(&schedule, current_time, task_idx);
         assert_eq!(score, 1.0);
     }
@@ -103,7 +104,7 @@ mod tests {
     fn test_priority_heuristic() {
         let schedule = get_test_schedule();
         let task_idx = 0;
-        let current_time = schedule.interval.timestamp;
+        let current_time = schedule.interval.start;
 
         let score = priority(&schedule, current_time, task_idx);
         assert_eq!(score, 1.0);
@@ -117,7 +118,7 @@ mod tests {
     fn test_deadline_heuristic() {
         let schedule = get_test_schedule();
         let task_idx = 0;
-        let current_time = schedule.interval.timestamp;
+        let current_time = schedule.interval.start;
 
         let score = deadline(&schedule, current_time, task_idx);
         assert_eq!(score, 1.0 / 3.0);
@@ -140,15 +141,15 @@ mod tests {
     fn test_volume_heuristic() {
         let mut schedule = get_test_schedule();
         let task_idx = 0;
-        let current_time = schedule.interval.timestamp;
+        let current_time = schedule.interval.start;
 
         let score = volume(&schedule, current_time, task_idx);
         assert_eq!(score, 2.0);
 
-        schedule
-            .entry(task_idx)
-            .or_default()
-            .push(Interval::new(current_time, 1.hour().minutes(30)));
+        schedule.schedule_task(
+            task_idx,
+            Interval::new(current_time, current_time + 1.hour().minutes(30)),
+        );
 
         let score = volume(&schedule, current_time, task_idx);
         assert_eq!(score, 0.5);

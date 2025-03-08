@@ -1,38 +1,56 @@
 mod allocators;
+mod group_by;
 mod heuristics;
 mod interval;
 mod schedule;
 
 use crate::{
-    allocators::TaskAllocator,
+    allocators::{Plans, TaskAllocatorWithPlans},
     interval::Interval,
-    schedule::{Schedule, Task},
+    schedule::{Schedule, Task, Tasks},
 };
-use jiff::ToSpan;
-use std::fs;
+use jiff::{RoundMode, ToSpan, Unit, Zoned, ZonedRound};
+use std::{collections::HashMap, error::Error, fs};
 
-const TASKS_FILE: &str = "data/my.tasks";
-const SCHEDULE_FILE: &str = "data/my.schedule";
+const TASKS_FILE: &str = "data/tasks.yaml";
+const PLANS_FILE: &str = "data/plans.yaml";
+const SCHEDULE_FILE: &str = "data/schedule.yaml";
 
-fn main() {
-    let mut schedule: Schedule = fs::read_to_string(TASKS_FILE).unwrap().parse().unwrap();
-    schedule = schedule
+fn run() -> Result<(), Box<dyn Error>> {
+    let tasks: Tasks = fs::read_to_string(TASKS_FILE)?.parse()?;
+    let plans: Plans = fs::read_to_string(PLANS_FILE)?.parse()?;
+
+    let allocator = TaskAllocatorWithPlans {
+        plans: plans.into(),
+        granularity: 1.hour(),
+    };
+
+    let start = Zoned::now()
+        .round(ZonedRound::new().smallest(Unit::Day).mode(RoundMode::Trunc))?
+        .timestamp();
+    let interval = Interval::new(start, start + 1.month());
+
+    let mut schedule = Schedule::new(allocator, tasks.into(), interval)
         .add_heuristic(heuristics::dependency)
         .add_heuristic(heuristics::volume)
         .add_heuristic(heuristics::deadline)
         .add_heuristic(heuristics::priority)
         .add_heuristic(heuristics::locality);
+
     loop {
         let next_item = schedule.next();
         match next_item {
-            Some((task_idx, task_interval)) => {
-                schedule.entry(task_idx).or_default().push(task_interval);
-            }
+            Some((task_idx, task_interval)) => schedule.schedule_task(task_idx, task_interval),
             None => break,
         }
     }
 
-    fs::write(SCHEDULE_FILE, schedule.to_string()).unwrap();
+    fs::write(SCHEDULE_FILE, schedule.to_string())?;
+    Ok(())
+}
+
+fn main() {
+    run().expect("Failed to run the scheduler");
 }
 
 pub fn get_test_schedule() -> Schedule {
@@ -81,16 +99,25 @@ pub fn get_test_schedule() -> Schedule {
         },
     ];
 
-    let allocator = TaskAllocator {
-        idle_intervals: vec![
-            Interval::new("2025-03-05T00:00Z".parse().unwrap(), 9.hours()),
-            Interval::new("2025-03-05T13:00Z".parse().unwrap(), 2.hours()),
-            Interval::new("2025-03-05T22:00Z".parse().unwrap(), 2.hours()),
-        ],
+    let allocator = TaskAllocatorWithPlans {
+        plans: HashMap::from([
+            (
+                Interval::from_span("2025-03-05T00:00Z".parse().unwrap(), 9.hours()),
+                "".into(),
+            ),
+            (
+                Interval::from_span("2025-03-05T13:00Z".parse().unwrap(), 2.hours()),
+                "".into(),
+            ),
+            (
+                Interval::from_span("2025-03-05T22:00Z".parse().unwrap(), 2.hours()),
+                "".into(),
+            ),
+        ]),
         granularity: 1.hour(),
     };
 
-    let interval = Interval::new("2025-03-05T00:00Z".parse().unwrap(), 24.hours());
+    let interval = Interval::from_span("2025-03-05T00:00Z".parse().unwrap(), 24.hours());
 
     Schedule::new(allocator, tasks, interval)
         .add_heuristic(heuristics::dependency)
@@ -112,10 +139,7 @@ mod tests {
             match next_item {
                 Some((task_idx, task_interval)) => {
                     scheduled_tasks.push((task_idx, task_interval.clone()));
-                    schedule
-                        .entry(task_idx)
-                        .or_default()
-                        .push(task_interval.clone());
+                    schedule.schedule_task(task_idx, task_interval)
                 }
                 None => break,
             }
@@ -126,31 +150,31 @@ mod tests {
             vec![
                 (
                     2,
-                    Interval::new("2025-03-05T09:00Z".parse().unwrap(), 1.hour())
+                    Interval::from_span("2025-03-05T09:00Z".parse().unwrap(), 1.hour())
                 ),
                 (
                     2,
-                    Interval::new("2025-03-05T10:00Z".parse().unwrap(), 1.hour())
+                    Interval::from_span("2025-03-05T10:00Z".parse().unwrap(), 1.hour())
                 ),
                 (
                     0,
-                    Interval::new("2025-03-05T11:00Z".parse().unwrap(), 1.hour())
+                    Interval::from_span("2025-03-05T11:00Z".parse().unwrap(), 1.hour())
                 ),
                 (
                     2,
-                    Interval::new("2025-03-05T12:00Z".parse().unwrap(), 1.hour())
+                    Interval::from_span("2025-03-05T12:00Z".parse().unwrap(), 1.hour())
                 ),
                 (
                     3,
-                    Interval::new("2025-03-05T15:00Z".parse().unwrap(), 1.hour())
+                    Interval::from_span("2025-03-05T15:00Z".parse().unwrap(), 1.hour())
                 ),
                 (
                     1,
-                    Interval::new("2025-03-05T16:00Z".parse().unwrap(), 1.hour())
+                    Interval::from_span("2025-03-05T16:00Z".parse().unwrap(), 1.hour())
                 ),
                 (
                     3,
-                    Interval::new("2025-03-05T17:00Z".parse().unwrap(), 1.hour())
+                    Interval::from_span("2025-03-05T17:00Z".parse().unwrap(), 1.hour())
                 ),
             ]
         );

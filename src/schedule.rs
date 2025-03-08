@@ -1,17 +1,13 @@
-use crate::{allocators::TaskAllocator, heuristics::Heuristic, interval::Interval};
-use derive_more::{Deref, DerefMut};
-use jiff::{
-    civil::{Date, Weekday},
-    tz::TimeZone,
-    RoundMode, Timestamp, ToSpan, Unit, ZonedRound,
+use crate::{
+    allocators::TaskAllocatorWithPlans, group_by::GroupBy, heuristics::Heuristic,
+    interval::Interval,
 };
+use derive_more::{Deref, DerefMut, Into};
+use jiff::{tz::TimeZone, RoundMode, Timestamp, Unit, ZonedRound};
 use std::{
     cmp::Ordering,
-    collections::HashMap,
     error::Error,
-    fmt,
-    fmt::{Display, Formatter},
-    hash::Hash,
+    fmt::{self, Display, Formatter},
     str::FromStr,
 };
 
@@ -29,31 +25,35 @@ pub type TaskIdx = usize;
 pub struct Schedule {
     #[deref]
     #[deref_mut]
-    inner: HashMap<TaskIdx, Vec<Interval>>,
+    inner: Vec<Vec<Interval>>,
     pub tasks: Vec<Task>,
-    allocator: TaskAllocator,
+    pub allocator: TaskAllocatorWithPlans,
     pub interval: Interval,
     pub current_time: Timestamp,
-    heuristics: Vec<Heuristic>,
+    pub heuristics: Vec<Heuristic>,
 }
 
 impl Schedule {
-    pub fn new(allocator: TaskAllocator, tasks: Vec<Task>, interval: Interval) -> Self {
+    pub fn new(allocator: TaskAllocatorWithPlans, tasks: Vec<Task>, interval: Interval) -> Self {
         Self {
-            inner: HashMap::new(),
+            inner: vec![Vec::new(); tasks.len()],
             tasks,
             allocator,
-            current_time: interval.timestamp,
+            current_time: interval.start,
             interval,
             heuristics: Vec::new(),
         }
+    }
+
+    pub fn schedule_task(&mut self, task_idx: TaskIdx, interval: Interval) {
+        self[task_idx].push(interval);
     }
 
     // works by iterating over the tasks and applying heuristics to them. the task with the highest
     // heuristic score will be selected for scheduling. the heuristic scores are multiplied
     // together. allocator will allocate the interval for the task to be scheduled on.
     pub fn next(&mut self) -> Option<(TaskIdx, Interval)> {
-        if self.current_time >= self.interval.end() {
+        if self.current_time >= self.interval.end {
             return None;
         }
 
@@ -73,25 +73,26 @@ impl Schedule {
             .iter()
             .enumerate()
             .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Less).reverse())
-            .unwrap()
+            .expect("Failed to find task with max heuristic score")
             .0;
 
         let interval = self.allocator.allocate(self, self.current_time, idx);
 
-        self.current_time = interval.end();
+        self.current_time = interval.end;
 
         Some((idx, interval))
     }
 
     pub fn get_last_task(&self) -> Option<TaskIdx> {
         self.iter()
+            .enumerate()
             .max_by_key(|(_, intervals)| {
                 intervals
                     .iter()
-                    .max_by_key(|interval| interval.end())
-                    .map(|interval| interval.end())
+                    .max_by_key(|interval| interval.end)
+                    .map(|interval| interval.end)
             })
-            .map(|(task_idx, _)| *task_idx)
+            .map(|(task_idx, _)| task_idx)
     }
 
     pub fn add_heuristic(mut self, heuristic: Heuristic) -> Self {
@@ -101,151 +102,55 @@ impl Schedule {
 
     pub fn get_total_task_hours(&self, task_idx: TaskIdx) -> f32 {
         self.inner
-            .get(&task_idx)
+            .get(task_idx)
             .map(|intervals| {
                 intervals
                     .iter()
-                    .map(|interval| {
-                        interval
-                            .span
-                            .total((Unit::Hour, &interval.timestamp.to_zoned(TimeZone::system())))
-                            .unwrap()
-                    })
-                    .sum::<f64>()
+                    .map(|interval| interval.hours())
+                    .sum::<f32>()
             })
-            .unwrap_or(0.0) as f32
+            .unwrap_or(0.0)
     }
 
-    pub fn get_idle_hours(&self, interval: Interval) -> f32 {
+    pub fn get_planned_hours(&self, interval: Interval) -> f32 {
         self.allocator
-            .idle_intervals
-            .iter()
-            .filter(|idle_interval| idle_interval.intercepts(&interval))
-            .map(|idle_interval| {
-                idle_interval
-                    .span
-                    .total((
-                        Unit::Hour,
-                        &idle_interval.timestamp.to_zoned(TimeZone::system()),
-                    ))
-                    .unwrap()
-            })
-            .sum::<f64>() as f32
+            .plans
+            .keys()
+            .filter(|plan| plan.intercepts(&interval))
+            .map(|plan| plan.hours())
+            .sum::<f32>()
     }
 }
 
-impl FromStr for Schedule {
+#[derive(Into)]
+pub struct Tasks(Vec<Task>);
+
+impl FromStr for Tasks {
     type Err = Box<dyn Error>;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let lines = s.split('\n');
-        let mut tasks = Vec::new();
-
-        let mut idx = 0;
-        let mut has_dependency = false;
-        for line in lines {
-            if line.trim().is_empty() {
-                has_dependency = false;
-                continue;
-            }
-
-            if line.trim() == "|" {
-                has_dependency = true;
-                continue;
-            }
-
-            let parts: Vec<&str> = line.split('/').map(|p| p.trim()).collect();
-            let [description, deadline, volume, completion]: [&str; 4] =
-                parts.as_slice().try_into()?;
-
-            let mut task = Task {
-                description: description.to_string(),
-                deadline: Date::strptime("%F", deadline)?
-                    .to_zoned(TimeZone::system())?
-                    .timestamp(),
-                priority: 1.0,
-                volume: volume[..volume.len() - 1].parse::<u32>()? as f32
-                    * (1.0 - completion[..completion.len() - 1].parse::<u32>()? as f32 / 100.0),
-                dependencies: Vec::new(),
-            };
-
-            if has_dependency {
-                task.dependencies = vec![idx];
-            }
-
-            tasks.push(task);
-
-            idx = tasks.len() - 1;
-        }
-
-        // todo: generate allocator config from .alloc file
-        let interval = Interval::new(
-            Date::strptime("%F", "2025-03-07")?
-                .to_zoned(TimeZone::system())?
-                .timestamp(),
-            1.month(),
-        );
-
-        let mut idle_intervals = Vec::new();
-
-        for day in 0..interval
-            .span
-            .total((Unit::Day, &interval.timestamp.to_zoned(TimeZone::system())))
-            .unwrap() as i32
-        {
-            let zoned = &interval.timestamp.to_zoned(TimeZone::system()) + day.days();
-            if zoned.weekday() == Weekday::Sunday {
-                idle_intervals.push(Interval::new(zoned.timestamp(), 1.day()));
-            } else {
-                idle_intervals.push(Interval::new(zoned.timestamp(), 12.hours()));
-                idle_intervals.push(Interval::new(zoned.timestamp() + 17.hour(), 2.hours()));
-                idle_intervals.push(Interval::new(zoned.timestamp() + 22.hour(), 2.hours()));
-            }
-        }
-
-        let allocator = TaskAllocator {
-            granularity: 1.hour(),
-            idle_intervals,
-        };
-
-        Ok(Self::new(allocator, tasks, interval))
-    }
-}
-
-trait GroupBy<K, V> {
-    fn group_by(self, key_fn: impl Fn(&V) -> K) -> HashMap<K, Vec<V>>;
-}
-
-impl<K: Hash + Eq, V: Clone, I: Iterator<Item = V>> GroupBy<K, V> for I {
-    fn group_by(self, key_fn: impl Fn(&V) -> K) -> HashMap<K, Vec<V>> {
-        let mut res: HashMap<K, Vec<V>> = HashMap::new();
-        for item in self {
-            let key = key_fn(&item);
-            res.entry(key).or_default().push(item);
-        }
-
-        res
+    fn from_str(_s: &str) -> Result<Self, Self::Err> {
+        todo!()
     }
 }
 
 impl Display for Schedule {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let mut all_intervals = Vec::new();
-        for (task_idx, intervals) in self.iter() {
+        for (task_idx, intervals) in self.iter().enumerate() {
             for interval in intervals {
                 all_intervals.push((task_idx, interval.clone()));
             }
         }
 
-        all_intervals.sort_by_key(|(_, interval)| interval.timestamp);
+        all_intervals.sort_by_key(|(_, interval)| interval.start);
 
         let mut all_intervals_grouped = all_intervals
             .into_iter()
             .group_by(|(_, interval)| {
                 interval
-                    .timestamp
+                    .start
                     .to_zoned(TimeZone::system())
                     .round(ZonedRound::new().smallest(Unit::Day).mode(RoundMode::Trunc))
-                    .unwrap()
+                    .expect("Failed to round timestamp")
             })
             .into_iter()
             .collect::<Vec<_>>();
@@ -254,18 +159,15 @@ impl Display for Schedule {
 
         for (day, mut task_intervals) in all_intervals_grouped {
             writeln!(f, "{}:", day.strftime("%F"))?;
-            task_intervals.sort_by_key(|(_, interval)| interval.timestamp);
+            task_intervals.sort_by_key(|(_, interval)| interval.start);
             for (task_idx, interval) in task_intervals {
-                let task = &self.tasks[*task_idx];
+                let task = &self.tasks[task_idx];
                 writeln!(
                     f,
                     "    {}: {} - {}",
                     task.description,
-                    interval
-                        .timestamp
-                        .to_zoned(TimeZone::system())
-                        .strftime("%R"),
-                    interval.end().to_zoned(TimeZone::system()).strftime("%R"),
+                    interval.start.to_zoned(TimeZone::system()).strftime("%R"),
+                    interval.end.to_zoned(TimeZone::system()).strftime("%R"),
                 )?;
             }
         }
