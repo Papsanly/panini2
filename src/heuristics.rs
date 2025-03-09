@@ -1,4 +1,4 @@
-use crate::{interval::Interval, schedule::TaskIdx, Schedule};
+use crate::{interval::Interval, tasks::TaskIdx, Schedule};
 use jiff::{tz::TimeZone, Timestamp, Unit};
 
 pub type Heuristic = fn(&Schedule, Timestamp, TaskIdx) -> f32;

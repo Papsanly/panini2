@@ -1,25 +1,16 @@
 use crate::{
-    allocators::TaskAllocatorWithPlans, group_by::GroupBy, heuristics::Heuristic,
+    allocators::TaskAllocatorWithPlans,
+    group_by::GroupBy,
+    heuristics::Heuristic,
     interval::Interval,
+    tasks::{Task, TaskIdx},
 };
-use derive_more::{Deref, DerefMut, Into};
+use derive_more::{Deref, DerefMut};
 use jiff::{tz::TimeZone, RoundMode, Timestamp, Unit, ZonedRound};
 use std::{
     cmp::Ordering,
-    error::Error,
     fmt::{self, Display, Formatter},
-    str::FromStr,
 };
-
-pub struct Task {
-    pub description: String,
-    pub deadline: Timestamp,
-    pub priority: f32,
-    pub volume: f32,
-    pub dependencies: Vec<TaskIdx>,
-}
-
-pub type TaskIdx = usize;
 
 #[derive(Deref, DerefMut)]
 pub struct Schedule {
@@ -119,16 +110,6 @@ impl Schedule {
             .filter(|plan| plan.intercepts(&interval))
             .map(|plan| plan.hours())
             .sum::<f32>()
-    }
-}
-
-#[derive(Into)]
-pub struct Tasks(Vec<Task>);
-
-impl FromStr for Tasks {
-    type Err = Box<dyn Error>;
-    fn from_str(_s: &str) -> Result<Self, Self::Err> {
-        todo!()
     }
 }
 

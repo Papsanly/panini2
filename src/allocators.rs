@@ -1,4 +1,4 @@
-use crate::{interval::Interval, schedule::TaskIdx, Schedule};
+use crate::{interval::Interval, tasks::TaskIdx, Schedule};
 use derive_more::Into;
 use jiff::{Span, Timestamp, ToSpan, Unit};
 use std::{collections::HashMap, error::Error, str::FromStr};

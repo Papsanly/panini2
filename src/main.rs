@@ -3,11 +3,13 @@ mod group_by;
 mod heuristics;
 mod interval;
 mod schedule;
+mod tasks;
 
 use crate::{
     allocators::{Plans, TaskAllocatorWithPlans},
     interval::Interval,
-    schedule::{Schedule, Task, Tasks},
+    schedule::Schedule,
+    tasks::{Task, Tasks},
 };
 use jiff::{RoundMode, ToSpan, Unit, Zoned, ZonedRound};
 use std::{collections::HashMap, error::Error, fs};
