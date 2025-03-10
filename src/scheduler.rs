@@ -164,7 +164,7 @@ impl Scheduler {
             .expect("Failed to find task with max heuristic score")
             .0;
 
-        let interval = self.allocator.allocate(self, self.current_time, idx);
+        let interval = self.allocator.allocate(self, idx);
 
         self.current_time = interval.end;
 
