@@ -64,11 +64,54 @@ pub struct Scheduler {
     pub heuristics: Vec<Heuristic>,
 }
 
-pub type Schedule = HashMap<String, HashMap<String, String>>;
+pub type Schedule = Vec<(String, Vec<(String, String)>)>;
 
-impl From<&Scheduler> for Schedule {
-    fn from(scheduler: &Scheduler) -> Self {
-        todo!()
+impl From<Scheduler> for Schedule {
+    fn from(scheduler: Scheduler) -> Self {
+        let mut all_intervals = Vec::new();
+        for (task_idx, intervals) in scheduler.inner.into_iter().enumerate() {
+            for interval in intervals {
+                all_intervals.push((task_idx, interval.clone()));
+            }
+        }
+
+        all_intervals.sort_by_key(|(_, interval)| interval.start);
+
+        let mut all_intervals_grouped = all_intervals
+            .into_iter()
+            .group_by(|(_, interval)| {
+                interval
+                    .start
+                    .to_zoned(TimeZone::system())
+                    .round(ZonedRound::new().smallest(Unit::Day).mode(RoundMode::Trunc))
+                    .expect("Failed to round timestamp")
+            })
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        all_intervals_grouped.sort_by_key(|(day, _)| day.clone());
+
+        all_intervals_grouped
+            .into_iter()
+            .map(|(day, intervals)| {
+                (
+                    day.strftime("%F").to_string(),
+                    intervals
+                        .into_iter()
+                        .map(|(task_idx, interval)| {
+                            (
+                                scheduler.tasks[task_idx].description.clone(),
+                                format!(
+                                    "{} - {}",
+                                    interval.start.to_zoned(TimeZone::system()).strftime("%R"),
+                                    interval.end.to_zoned(TimeZone::system()).strftime("%R"),
+                                ),
+                            )
+                        })
+                        .collect(),
+                )
+            })
+            .collect()
     }
 }
 
