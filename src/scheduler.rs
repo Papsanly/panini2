@@ -7,17 +7,63 @@ use crate::{
 };
 use derive_more::{Deref, DerefMut};
 use jiff::{civil::Date, tz::TimeZone, RoundMode, Timestamp, ToSpan, Unit, ZonedRound};
-use serde::Deserialize;
+use serde::{
+    de::{MapAccess, Visitor},
+    Deserialize, Deserializer,
+};
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, HashMap},
     error::Error,
+    fmt::{self, Formatter},
+    marker::PhantomData,
 };
+
+// This function is used to deserialize a vector of tuples from a map-like structure in the
+// order of their appearance in the input data.
+fn deserialize_map_as_vec<'de, D, K, V>(deserializer: D) -> Result<Vec<(K, V)>, D::Error>
+where
+    D: Deserializer<'de>,
+    K: Deserialize<'de>,
+    V: Deserialize<'de>,
+{
+    struct MapToVecVisitor<K, V> {
+        marker: PhantomData<(K, V)>,
+    }
+
+    impl<'de, K, V> Visitor<'de> for MapToVecVisitor<K, V>
+    where
+        K: Deserialize<'de>,
+        V: Deserialize<'de>,
+    {
+        type Value = Vec<(K, V)>;
+
+        fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+            formatter.write_str("a map")
+        }
+
+        fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let mut vec = Vec::with_capacity(access.size_hint().unwrap_or(0));
+            while let Some((key, value)) = access.next_entry()? {
+                vec.push((key, value));
+            }
+            Ok(vec)
+        }
+    }
+
+    deserializer.deserialize_map(MapToVecVisitor {
+        marker: PhantomData,
+    })
+}
 
 #[derive(Debug, Deserialize)]
 pub struct SchedulerConfig {
     tasks: Vec<Vec<String>>,
-    plans: HashMap<String, HashMap<String, String>>,
+    #[serde(deserialize_with = "deserialize_map_as_vec")]
+    plans: Vec<(String, HashMap<String, String>)>,
     granularity: String,
     start: String,
     end: String,

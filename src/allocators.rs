@@ -5,7 +5,7 @@ use crate::{
     Scheduler,
 };
 use croner::Cron;
-use derive_more::Into;
+use derive_more::{Deref, DerefMut, Into};
 use jiff::{civil::DateTime, tz::TimeZone, RoundMode, Span, ToSpan, Unit, ZonedRound};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -58,16 +58,64 @@ impl TaskAllocatorWithPlans {
     }
 }
 
-#[derive(Into)]
+#[derive(Into, Deref, DerefMut)]
 pub struct Plans(BTreeMap<Interval, String>);
 
-impl TryFrom<(&Interval, HashMap<String, HashMap<String, String>>)> for Plans {
+impl Plans {
+    pub fn insert_with_overriding(&mut self, interval: Interval, description: String) {
+        let contained_intervals: Vec<_> = self
+            .keys()
+            .filter(|&k| interval.contains(k))
+            .cloned()
+            .collect();
+
+        for k in contained_intervals {
+            self.remove(&k);
+        }
+
+        let is_contained_in_intervals: Vec<_> = self
+            .iter()
+            .filter(|(k, _)| k.contains(&interval))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+
+        for (k, v) in is_contained_in_intervals {
+            self.remove(&k);
+            if k.start != interval.start {
+                self.insert(Interval::new(k.start, interval.start), v.clone());
+            }
+            if k.end != interval.end {
+                self.insert(Interval::new(interval.end, k.end), v);
+            }
+        }
+
+        let partially_intercepted_intervals: Vec<_> = self
+            .iter()
+            .filter(|(k, _)| interval.partially_intercepts(k))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+
+        for (k, v) in partially_intercepted_intervals {
+            self.remove(&k);
+            if k.start < interval.start {
+                self.insert(Interval::new(k.start, interval.start), v.clone());
+            }
+            if k.end > interval.end {
+                self.insert(Interval::new(interval.end, k.end), v);
+            }
+        }
+
+        self.insert(interval, description);
+    }
+}
+
+impl TryFrom<(&Interval, Vec<(String, HashMap<String, String>)>)> for Plans {
     type Error = Box<dyn Error>;
 
     fn try_from(
-        (interval, value): (&Interval, HashMap<String, HashMap<String, String>>),
+        (interval, value): (&Interval, Vec<(String, HashMap<String, String>)>),
     ) -> Result<Self, Self::Error> {
-        let mut plans = BTreeMap::new();
+        let mut plans = Plans(BTreeMap::new());
         for (cron_part, day_plans) in value {
             let cron_string = "0 0 ".to_string() + &cron_part;
             let cron = Cron::new(&cron_string).parse()?;
@@ -109,12 +157,12 @@ impl TryFrom<(&Interval, HashMap<String, HashMap<String, String>>)> for Plans {
                     };
 
                     let plan_interval = Interval::new(start, end);
-                    plans.insert(plan_interval, description.clone());
+                    plans.insert_with_overriding(plan_interval, description.clone());
                 }
             }
         }
 
-        Ok(Plans(plans))
+        Ok(plans)
     }
 }
 

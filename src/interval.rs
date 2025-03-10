@@ -40,4 +40,13 @@ impl Interval {
     pub fn intercepts(&self, other: &Self) -> bool {
         self.start < other.end && other.start < self.end
     }
+
+    pub fn partially_intercepts(&self, other: &Self) -> bool {
+        self.start < other.end && self.end > other.start && self.end < other.end
+            || self.end > other.end && self.start < other.end && self.start > other.start
+    }
+
+    pub fn contains(&self, other: &Self) -> bool {
+        self.start <= other.start && self.end >= other.end
+    }
 }
