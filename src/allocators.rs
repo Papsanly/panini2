@@ -66,7 +66,7 @@ impl FromStr for Plans {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{get_test_schedule, interval::Interval};
+    use crate::{interval::Interval, tests::get_test_scheduler};
     use jiff::ToSpan;
 
     #[test]
