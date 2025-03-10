@@ -87,11 +87,10 @@ impl Scheduler {
         }
     }
 
-    pub fn schedule(&mut self) -> Schedule {
+    pub fn schedule(&mut self) {
         while let Some((task_idx, task_interval)) = self.next() {
             self.schedule_task(task_idx, task_interval);
         }
-        Schedule::from(&*self)
     }
 
     pub fn schedule_task(&mut self, task_idx: TaskIdx, interval: Interval) {

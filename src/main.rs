@@ -7,7 +7,7 @@ mod scheduler;
 mod tasks;
 mod tests;
 
-use crate::scheduler::{Scheduler, SchedulerConfig};
+use crate::scheduler::{Schedule, Scheduler, SchedulerConfig};
 use std::{error::Error, fs};
 
 const CONFIG_FILE: &str = "data/config.yaml";
@@ -22,7 +22,9 @@ fn run() -> Result<(), Box<dyn Error>> {
         .add_heuristic(heuristics::deadline)
         .add_heuristic(heuristics::locality);
 
-    let schedule = scheduler.schedule();
+    scheduler.schedule();
+    let schedule = Schedule::from(scheduler);
+
     fs::write(SCHEDULE_FILE, serde_yaml::to_string(&schedule)?)?;
 
     Ok(())
