@@ -8,7 +8,11 @@ use crate::{
 use derive_more::{Deref, DerefMut};
 use jiff::{civil::Date, tz::TimeZone, RoundMode, Timestamp, ToSpan, Unit, ZonedRound};
 use serde::Deserialize;
-use std::{cmp::Ordering, collections::HashMap, error::Error};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, HashMap},
+    error::Error,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct SchedulerConfig {
@@ -64,7 +68,7 @@ pub struct Scheduler {
     pub heuristics: Vec<Heuristic>,
 }
 
-pub type Schedule = Vec<(String, Vec<(String, String)>)>;
+pub type Schedule = BTreeMap<String, BTreeMap<String, String>>;
 
 impl From<Scheduler> for Schedule {
     fn from(scheduler: Scheduler) -> Self {
@@ -75,9 +79,7 @@ impl From<Scheduler> for Schedule {
             }
         }
 
-        all_intervals.sort_by_key(|(_, interval)| interval.start);
-
-        let mut all_intervals_grouped = all_intervals
+        let all_intervals_grouped = all_intervals
             .into_iter()
             .group_by(|(_, interval)| {
                 interval
@@ -86,13 +88,9 @@ impl From<Scheduler> for Schedule {
                     .round(ZonedRound::new().smallest(Unit::Day).mode(RoundMode::Trunc))
                     .expect("Failed to round timestamp")
             })
-            .into_iter()
-            .collect::<Vec<_>>();
-
-        all_intervals_grouped.sort_by_key(|(day, _)| day.clone());
+            .into_iter();
 
         all_intervals_grouped
-            .into_iter()
             .map(|(day, intervals)| {
                 (
                     day.strftime("%F").to_string(),
@@ -100,12 +98,12 @@ impl From<Scheduler> for Schedule {
                         .into_iter()
                         .map(|(task_idx, interval)| {
                             (
-                                scheduler.tasks[task_idx].description.clone(),
                                 format!(
                                     "{} - {}",
                                     interval.start.to_zoned(TimeZone::system()).strftime("%R"),
                                     interval.end.to_zoned(TimeZone::system()).strftime("%R"),
                                 ),
+                                scheduler.tasks[task_idx].description.clone(),
                             )
                         })
                         .collect(),
