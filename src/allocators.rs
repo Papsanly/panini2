@@ -1,6 +1,12 @@
-use crate::{interval::Interval, tasks::TaskIdx, Scheduler};
+use crate::{
+    chrono::{from_chrono, to_chrono},
+    interval::Interval,
+    tasks::TaskIdx,
+    Scheduler,
+};
+use croner::Cron;
 use derive_more::Into;
-use jiff::{Span, Timestamp, ToSpan, Unit};
+use jiff::{civil::DateTime, tz::TimeZone, RoundMode, Span, Timestamp, ToSpan, Unit, ZonedRound};
 use std::{collections::HashMap, error::Error};
 
 pub struct TaskAllocatorWithPlans {
@@ -56,11 +62,60 @@ impl TaskAllocatorWithPlans {
 #[derive(Into)]
 pub struct Plans(HashMap<Interval, String>);
 
-impl TryFrom<HashMap<String, HashMap<String, String>>> for Plans {
+impl TryFrom<(&Interval, HashMap<String, HashMap<String, String>>)> for Plans {
     type Error = Box<dyn Error>;
 
-    fn try_from(value: HashMap<String, HashMap<String, String>>) -> Result<Self, Self::Error> {
-        todo!()
+    fn try_from(
+        (interval, value): (&Interval, HashMap<String, HashMap<String, String>>),
+    ) -> Result<Self, Self::Error> {
+        let mut plans = HashMap::new();
+        for (cron_part, day_plans) in value {
+            let cron_string = "0 0 ".to_string() + &cron_part;
+            let cron = Cron::new(&cron_string).parse()?;
+
+            for (time, description) in day_plans {
+                for datetime in cron
+                    .iter_from(to_chrono(interval.start))
+                    .take_while(|dt| from_chrono(*dt) < interval.end)
+                {
+                    let date = from_chrono(datetime);
+                    let [start, end]: [&str; 2] = time
+                        .split('-')
+                        .map(|v| v.trim())
+                        .collect::<Vec<_>>()
+                        .try_into()
+                        .map_err(|e: Vec<_>| {
+                            format!(
+                                "Expected 2 elements separated by '\\', got {}: {:?}",
+                                e.len(),
+                                e
+                            )
+                        })?;
+                    let start =
+                        DateTime::strptime("%F %R", format!("{} {}", date.strftime("%F"), start))?
+                            .to_zoned(TimeZone::system())
+                            .unwrap()
+                            .timestamp();
+
+                    let end = if end.starts_with("24") {
+                        (&date.to_zoned(TimeZone::system()) + 1.day())
+                            .round(ZonedRound::new().smallest(Unit::Day).mode(RoundMode::Trunc))
+                            .unwrap()
+                            .timestamp()
+                    } else {
+                        DateTime::strptime("%F %R", format!("{} {}", date.strftime("%F"), end))?
+                            .to_zoned(TimeZone::system())
+                            .unwrap()
+                            .timestamp()
+                    };
+
+                    let plan_interval = Interval::new(start, end);
+                    plans.insert(plan_interval, description.clone());
+                }
+            }
+        }
+
+        Ok(Plans(plans))
     }
 }
 

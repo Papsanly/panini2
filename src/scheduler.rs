@@ -8,16 +8,11 @@ use crate::{
 use derive_more::{Deref, DerefMut};
 use jiff::{civil::Date, tz::TimeZone, RoundMode, Timestamp, ToSpan, Unit, ZonedRound};
 use serde::Deserialize;
-use std::{
-    cmp::Ordering,
-    collections::HashMap,
-    error::Error,
-    fmt::{self, Display, Formatter},
-};
+use std::{cmp::Ordering, collections::HashMap, error::Error};
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct SchedulerConfig {
-    tasks: Vec<Vec<Vec<String>>>,
+    tasks: Vec<Vec<String>>,
     plans: HashMap<String, HashMap<String, String>>,
     granularity: String,
     start: String,
@@ -28,11 +23,6 @@ impl TryFrom<SchedulerConfig> for Scheduler {
     type Error = Box<dyn Error>;
 
     fn try_from(value: SchedulerConfig) -> Result<Self, Self::Error> {
-        let allocator = TaskAllocatorWithPlans {
-            granularity: value.granularity.parse::<i32>()?.hours(),
-            plans: Plans::try_from(value.plans)?.into(),
-        };
-
         let interval = Interval::new(
             value
                 .start
@@ -45,6 +35,13 @@ impl TryFrom<SchedulerConfig> for Scheduler {
                 .to_zoned(TimeZone::system())?
                 .timestamp(),
         );
+
+        let allocator = TaskAllocatorWithPlans {
+            granularity: value.granularity[..value.granularity.len() - 1]
+                .parse::<i32>()?
+                .hours(),
+            plans: Plans::try_from((&interval, value.plans))?.into(),
+        };
 
         Ok(Self::new(
             allocator,
