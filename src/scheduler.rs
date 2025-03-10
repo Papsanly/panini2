@@ -103,7 +103,18 @@ impl From<&Scheduler> for Schedule {
                                 format!(
                                     "{} - {}",
                                     interval.start.to_zoned(TimeZone::system()).strftime("%R"),
-                                    interval.end.to_zoned(TimeZone::system()).strftime("%R"),
+                                    {
+                                        let res = interval
+                                            .end
+                                            .to_zoned(TimeZone::system())
+                                            .strftime("%R")
+                                            .to_string();
+                                        if res == "00:00" {
+                                            "24:00".to_string()
+                                        } else {
+                                            res
+                                        }
+                                    }
                                 ),
                                 description,
                             )
