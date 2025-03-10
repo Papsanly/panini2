@@ -1,4 +1,5 @@
 mod allocators;
+mod chrono;
 mod group_by;
 mod heuristics;
 mod interval;
