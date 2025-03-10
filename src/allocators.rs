@@ -7,11 +7,14 @@ use crate::{
 use croner::Cron;
 use derive_more::Into;
 use jiff::{civil::DateTime, tz::TimeZone, RoundMode, Span, ToSpan, Unit, ZonedRound};
-use std::{collections::HashMap, error::Error};
+use std::{
+    collections::{BTreeMap, HashMap},
+    error::Error,
+};
 
 pub struct TaskAllocatorWithPlans {
     pub granularity: Span,
-    pub plans: HashMap<Interval, String>,
+    pub plans: BTreeMap<Interval, String>,
 }
 
 // allocates intervals for tasks with max length of `granularity`. avoids placing tasks on planed
@@ -41,9 +44,7 @@ impl TaskAllocatorWithPlans {
             allocated_interval.end = scheduler.interval.end;
         }
 
-        let mut plan_intervals: Vec<_> = self.plans.keys().collect();
-        plan_intervals.sort_by_key(|interval| interval.start);
-        for plan_interval in plan_intervals {
+        for plan_interval in self.plans.keys() {
             if !allocated_interval.intercepts(plan_interval) {
                 continue;
             } else if allocated_interval.start >= plan_interval.start {
@@ -58,7 +59,7 @@ impl TaskAllocatorWithPlans {
 }
 
 #[derive(Into)]
-pub struct Plans(HashMap<Interval, String>);
+pub struct Plans(BTreeMap<Interval, String>);
 
 impl TryFrom<(&Interval, HashMap<String, HashMap<String, String>>)> for Plans {
     type Error = Box<dyn Error>;
@@ -66,7 +67,7 @@ impl TryFrom<(&Interval, HashMap<String, HashMap<String, String>>)> for Plans {
     fn try_from(
         (interval, value): (&Interval, HashMap<String, HashMap<String, String>>),
     ) -> Result<Self, Self::Error> {
-        let mut plans = HashMap::new();
+        let mut plans = BTreeMap::new();
         for (cron_part, day_plans) in value {
             let cron_string = "0 0 ".to_string() + &cron_part;
             let cron = Cron::new(&cron_string).parse()?;
@@ -130,7 +131,7 @@ mod tests {
 
         scheduler.allocator = TaskAllocatorWithPlans {
             granularity: 1.hour(),
-            plans: HashMap::from([
+            plans: BTreeMap::from([
                 (
                     Interval::from_span(scheduler.current_time, 2.hours()),
                     "".into(),

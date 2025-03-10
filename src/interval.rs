@@ -1,6 +1,6 @@
 use jiff::{tz::TimeZone, Span, Timestamp, Unit};
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Interval {
     pub start: Timestamp,
     pub end: Timestamp,

@@ -4,7 +4,7 @@ use crate::{
     tasks::Task,
 };
 use jiff::ToSpan;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 pub fn get_test_scheduler() -> Scheduler {
     let tasks = vec![
@@ -53,7 +53,7 @@ pub fn get_test_scheduler() -> Scheduler {
     ];
 
     let allocator = TaskAllocatorWithPlans {
-        plans: HashMap::from([
+        plans: BTreeMap::from([
             (
                 Interval::from_span("2025-03-05T00:00Z".parse().unwrap(), 9.hours()),
                 "".into(),
