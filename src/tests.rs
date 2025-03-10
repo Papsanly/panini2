@@ -1,3 +1,4 @@
+#![cfg(test)]
 use crate::{
     allocators::TaskAllocatorWithPlans, heuristics, interval::Interval, scheduler::Scheduler,
     tasks::Task,
@@ -77,57 +78,53 @@ pub fn get_test_scheduler() -> Scheduler {
         .add_heuristic(heuristics::deadline)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[test]
+fn test_scheduler() {
+    let mut scheduler = get_test_scheduler();
 
-    #[test]
-    fn test_scheduler_iter() {
-        let mut scheduler = get_test_scheduler();
-        let mut scheduled_tasks = Vec::new();
-        loop {
-            let next_item = scheduler.next();
-            match next_item {
-                Some((task_idx, task_interval)) => {
-                    scheduled_tasks.push((task_idx, task_interval.clone()));
-                    scheduler.schedule_task(task_idx, task_interval)
-                }
-                None => break,
+    let mut scheduled_tasks = Vec::new();
+    loop {
+        let next_item = scheduler.next();
+        match next_item {
+            Some((task_idx, task_interval)) => {
+                scheduled_tasks.push((task_idx, task_interval.clone()));
+                scheduler.schedule_task(task_idx, task_interval)
             }
+            None => break,
         }
-
-        assert_eq!(
-            scheduled_tasks,
-            vec![
-                (
-                    2,
-                    Interval::from_span("2025-03-05T09:00Z".parse().unwrap(), 1.hour())
-                ),
-                (
-                    2,
-                    Interval::from_span("2025-03-05T10:00Z".parse().unwrap(), 1.hour())
-                ),
-                (
-                    0,
-                    Interval::from_span("2025-03-05T11:00Z".parse().unwrap(), 1.hour())
-                ),
-                (
-                    2,
-                    Interval::from_span("2025-03-05T12:00Z".parse().unwrap(), 1.hour())
-                ),
-                (
-                    3,
-                    Interval::from_span("2025-03-05T15:00Z".parse().unwrap(), 1.hour())
-                ),
-                (
-                    1,
-                    Interval::from_span("2025-03-05T16:00Z".parse().unwrap(), 1.hour())
-                ),
-                (
-                    3,
-                    Interval::from_span("2025-03-05T17:00Z".parse().unwrap(), 1.hour())
-                ),
-            ]
-        );
     }
+
+    assert_eq!(
+        scheduled_tasks,
+        vec![
+            (
+                2,
+                Interval::from_span("2025-03-05T09:00Z".parse().unwrap(), 1.hour())
+            ),
+            (
+                2,
+                Interval::from_span("2025-03-05T10:00Z".parse().unwrap(), 1.hour())
+            ),
+            (
+                0,
+                Interval::from_span("2025-03-05T11:00Z".parse().unwrap(), 1.hour())
+            ),
+            (
+                2,
+                Interval::from_span("2025-03-05T12:00Z".parse().unwrap(), 1.hour())
+            ),
+            (
+                3,
+                Interval::from_span("2025-03-05T15:00Z".parse().unwrap(), 1.hour())
+            ),
+            (
+                1,
+                Interval::from_span("2025-03-05T16:00Z".parse().unwrap(), 1.hour())
+            ),
+            (
+                3,
+                Interval::from_span("2025-03-05T17:00Z".parse().unwrap(), 1.hour())
+            ),
+        ]
+    );
 }
