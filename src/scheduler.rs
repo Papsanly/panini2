@@ -1,19 +1,62 @@
 use crate::{
-    allocators::TaskAllocatorWithPlans,
+    allocators::{Plans, TaskAllocatorWithPlans},
     group_by::GroupBy,
     heuristics::Heuristic,
     interval::Interval,
-    tasks::{Task, TaskIdx},
+    tasks::{Task, TaskIdx, Tasks},
 };
 use derive_more::{Deref, DerefMut};
-use jiff::{tz::TimeZone, RoundMode, Timestamp, Unit, ZonedRound};
+use jiff::{civil::Date, tz::TimeZone, RoundMode, Timestamp, ToSpan, Unit, ZonedRound};
+use serde::Deserialize;
 use std::{
     cmp::Ordering,
+    collections::HashMap,
+    error::Error,
     fmt::{self, Display, Formatter},
 };
 
-#[derive(Deref, DerefMut)]
-pub struct Schedule {
+#[derive(Deserialize)]
+pub struct SchedulerConfig {
+    tasks: Vec<Vec<Vec<String>>>,
+    plans: HashMap<String, HashMap<String, String>>,
+    granularity: String,
+    start: String,
+    end: String,
+}
+
+impl TryFrom<SchedulerConfig> for Scheduler {
+    type Error = Box<dyn Error>;
+
+    fn try_from(value: SchedulerConfig) -> Result<Self, Self::Error> {
+        let allocator = TaskAllocatorWithPlans {
+            granularity: value.granularity.parse::<i32>()?.hours(),
+            plans: Plans::try_from(value.plans)?.into(),
+        };
+
+        let interval = Interval::new(
+            value
+                .start
+                .parse::<Date>()?
+                .to_zoned(TimeZone::system())?
+                .timestamp(),
+            value
+                .end
+                .parse::<Date>()?
+                .to_zoned(TimeZone::system())?
+                .timestamp(),
+        );
+
+        Ok(Self::new(
+            allocator,
+            Tasks::try_from(value.tasks)?.into(),
+            interval,
+        ))
+    }
+}
+
+#[derive(Deref, DerefMut, Deserialize)]
+#[serde(try_from = "SchedulerConfig")]
+pub struct Scheduler {
     #[deref]
     #[deref_mut]
     inner: Vec<Vec<Interval>>,
@@ -24,7 +67,14 @@ pub struct Schedule {
     pub heuristics: Vec<Heuristic>,
 }
 
-impl Schedule {
+pub type Schedule = HashMap<String, HashMap<String, String>>;
+
+impl From<&Scheduler> for Schedule {
+    fn from(scheduler: &Scheduler) -> Self {
+        todo!()
+    }
+}
+
 impl Scheduler {
     pub fn new(allocator: TaskAllocatorWithPlans, tasks: Vec<Task>, interval: Interval) -> Self {
         Self {
@@ -35,6 +85,13 @@ impl Scheduler {
             interval,
             heuristics: Vec::new(),
         }
+    }
+
+    pub fn schedule(&mut self) -> Schedule {
+        while let Some((task_idx, task_interval)) = self.next() {
+            self.schedule_task(task_idx, task_interval);
+        }
+        Schedule::from(&*self)
     }
 
     pub fn schedule_task(&mut self, task_idx: TaskIdx, interval: Interval) {

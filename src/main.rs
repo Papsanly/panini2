@@ -6,48 +6,24 @@ mod scheduler;
 mod tasks;
 mod tests;
 
-use crate::{
-    allocators::{Plans, TaskAllocatorWithPlans},
-    interval::Interval,
-    schedule::Schedule,
-    tasks::{Task, Tasks},
-};
-use jiff::{RoundMode, ToSpan, Unit, Zoned, ZonedRound};
-use std::{collections::HashMap, error::Error, fs};
+use crate::scheduler::{Scheduler, SchedulerConfig};
+use std::{error::Error, fs};
 
-const TASKS_FILE: &str = "data/tasks.yaml";
-const PLANS_FILE: &str = "data/plans.yaml";
+const CONFIG_FILE: &str = "data/config.yaml";
 const SCHEDULE_FILE: &str = "data/schedule.yaml";
 
 fn run() -> Result<(), Box<dyn Error>> {
-    let tasks: Tasks = fs::read_to_string(TASKS_FILE)?.parse()?;
-    let plans: Plans = fs::read_to_string(PLANS_FILE)?.parse()?;
+    let config = serde_yaml::from_str::<SchedulerConfig>(&fs::read_to_string(CONFIG_FILE)?)?;
 
-    let allocator = TaskAllocatorWithPlans {
-        plans: plans.into(),
-        granularity: 1.hour(),
-    };
-
-    let start = Zoned::now()
-        .round(ZonedRound::new().smallest(Unit::Day).mode(RoundMode::Trunc))?
-        .timestamp();
-    let interval = Interval::new(start, start + 1.month());
-
-    let mut schedule = Schedule::new(allocator, tasks.into(), interval)
+    let mut scheduler = Scheduler::try_from(config)?
         .add_heuristic(heuristics::dependency)
         .add_heuristic(heuristics::volume)
         .add_heuristic(heuristics::deadline)
         .add_heuristic(heuristics::locality);
 
-    loop {
-        let next_item = schedule.next();
-        match next_item {
-            Some((task_idx, task_interval)) => schedule.schedule_task(task_idx, task_interval),
-            None => break,
-        }
-    }
+    let schedule = scheduler.schedule();
+    fs::write(SCHEDULE_FILE, serde_yaml::to_string(&schedule)?)?;
 
-    fs::write(SCHEDULE_FILE, schedule.to_string())?;
     Ok(())
 }
 
