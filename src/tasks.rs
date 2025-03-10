@@ -2,11 +2,14 @@ use derive_more::Into;
 use jiff::{civil::Date, tz::TimeZone, Timestamp};
 use std::error::Error;
 
-impl TryFrom<Vec<String>> for Task {
+impl TryFrom<String> for Task {
     type Error = Box<dyn Error>;
 
-    fn try_from(value: Vec<String>) -> Result<Self, Self::Error> {
-        let [description, deadline, volume, progress] = value
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let [description, deadline, volume, progress]: [&str; 4] = value
+            .split('/')
+            .map(|v| v.trim())
+            .collect::<Vec<_>>()
             .try_into()
             .map_err(|e: Vec<_>| format!("Expected 4 elements, got {}: {:?}", e.len(), e))?;
 
@@ -18,7 +21,7 @@ impl TryFrom<Vec<String>> for Task {
         let progress = progress[..progress.len() - 1].parse::<u32>()? as f32;
 
         Ok(Task {
-            description,
+            description: description.to_string(),
             deadline,
             priority: 1.0,
             volume: volume * (1.0 - progress / 100.0),
@@ -41,10 +44,10 @@ pub type TaskIdx = usize;
 #[derive(Into)]
 pub struct Tasks(Vec<Task>);
 
-impl TryFrom<Vec<Vec<Vec<String>>>> for Tasks {
+impl TryFrom<Vec<Vec<String>>> for Tasks {
     type Error = Box<dyn Error>;
 
-    fn try_from(value: Vec<Vec<Vec<String>>>) -> Result<Self, Self::Error> {
+    fn try_from(value: Vec<Vec<String>>) -> Result<Self, Self::Error> {
         let mut tasks = Vec::new();
 
         for task_chain in value {
