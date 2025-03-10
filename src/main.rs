@@ -2,7 +2,7 @@ mod allocators;
 mod group_by;
 mod heuristics;
 mod interval;
-mod schedule;
+mod scheduler;
 mod tasks;
 mod tests;
 

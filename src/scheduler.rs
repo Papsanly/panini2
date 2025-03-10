@@ -25,6 +25,7 @@ pub struct Schedule {
 }
 
 impl Schedule {
+impl Scheduler {
     pub fn new(allocator: TaskAllocatorWithPlans, tasks: Vec<Task>, interval: Interval) -> Self {
         Self {
             inner: vec![Vec::new(); tasks.len()],
@@ -113,7 +114,7 @@ impl Schedule {
     }
 }
 
-impl Display for Schedule {
+impl Display for Scheduler {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let mut all_intervals = Vec::new();
         for (task_idx, intervals) in self.iter().enumerate() {

@@ -1,4 +1,4 @@
-use crate::{interval::Interval, tasks::TaskIdx, Schedule};
+use crate::{interval::Interval, tasks::TaskIdx, Scheduler};
 use derive_more::Into;
 use jiff::{Span, Timestamp, ToSpan, Unit};
 use std::{collections::HashMap, error::Error, str::FromStr};
@@ -14,14 +14,14 @@ pub struct TaskAllocatorWithPlans {
 impl TaskAllocatorWithPlans {
     pub fn allocate(
         &self,
-        schedule: &Schedule,
+        scheduler: &Scheduler,
         current_time: Timestamp,
         task_idx: TaskIdx,
     ) -> Interval {
         let mut allocated_interval = Interval::new(current_time, current_time + self.granularity);
 
-        let task = &schedule.tasks[task_idx];
-        let work_hours = task.volume - schedule.get_total_task_hours(task_idx);
+        let task = &scheduler.tasks[task_idx];
+        let work_hours = task.volume - scheduler.get_total_task_hours(task_idx);
         let work_span = ((work_hours * 3600.0) as i32).seconds();
 
         if work_hours
@@ -33,8 +33,8 @@ impl TaskAllocatorWithPlans {
             allocated_interval.set_span(work_span);
         }
 
-        if current_time + work_span >= schedule.interval.end {
-            allocated_interval.end = schedule.interval.end;
+        if current_time + work_span >= scheduler.interval.end {
+            allocated_interval.end = scheduler.interval.end;
         }
 
         let mut plan_intervals: Vec<_> = self.plans.keys().collect();
@@ -71,11 +71,11 @@ mod tests {
 
     #[test]
     fn test_task_allocator() {
-        let mut schedule = get_test_schedule();
+        let mut scheduler = get_test_scheduler();
         let task_idx = 0;
-        let current_time = schedule.interval.start;
+        let current_time = scheduler.interval.start;
 
-        schedule.allocator = TaskAllocatorWithPlans {
+        scheduler.allocator = TaskAllocatorWithPlans {
             granularity: 1.hour(),
             plans: HashMap::from([
                 (
@@ -95,9 +95,9 @@ mod tests {
                 ),
             ]),
         };
-        let allocator = &schedule.allocator;
+        let allocator = &scheduler.allocator;
 
-        let allocated_interval = allocator.allocate(&schedule, current_time, task_idx);
+        let allocated_interval = allocator.allocate(&scheduler, current_time, task_idx);
 
         assert_eq!(
             allocated_interval,
@@ -107,31 +107,31 @@ mod tests {
             ),
         );
 
-        let current_time = schedule.interval.end - 40.minutes();
+        let current_time = scheduler.interval.end - 40.minutes();
         let task_idx = 1;
-        let allocated_interval = allocator.allocate(&schedule, current_time, task_idx);
+        let allocated_interval = allocator.allocate(&scheduler, current_time, task_idx);
         assert_eq!(
             allocated_interval,
             Interval::new(current_time, current_time + 40.minutes())
         );
 
-        let current_time = schedule.interval.start + 2.hours();
+        let current_time = scheduler.interval.start + 2.hours();
         let task_idx = 5;
-        let allocated_interval = allocator.allocate(&schedule, current_time, task_idx);
+        let allocated_interval = allocator.allocate(&scheduler, current_time, task_idx);
 
         assert_eq!(
             allocated_interval,
             Interval::new(current_time, current_time + 30.minutes())
         );
 
-        let current_time = schedule.interval.start + 4.hours().minutes(30);
-        let allocated_interval = allocator.allocate(&schedule, current_time, task_idx);
+        let current_time = scheduler.interval.start + 4.hours().minutes(30);
+        let allocated_interval = allocator.allocate(&scheduler, current_time, task_idx);
 
         assert_eq!(
             allocated_interval,
             Interval::new(
-                schedule.interval.start + 5.hours(),
-                schedule.interval.start + 5.hours().minutes(30)
+                scheduler.interval.start + 5.hours(),
+                scheduler.interval.start + 5.hours().minutes(30)
             )
         );
     }
