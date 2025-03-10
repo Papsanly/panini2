@@ -19,6 +19,12 @@ pub fn dependency(scheduler: &Scheduler, current_time: Timestamp, task_idx: Task
     }
 }
 
+// proportional to priority of the task. e.g. priority 2.0 means that task heuristic score will be multiplied by 2.0
+pub fn priority(schedule: &Scheduler, _current_time: Timestamp, task_idx: TaskIdx) -> f32 {
+    let task = &schedule.tasks[task_idx];
+    task.priority
+}
+
 // inversely proportional to the amount of hours I can work on the task until the deadline
 pub fn deadline(scheduler: &Scheduler, current_time: Timestamp, task_idx: TaskIdx) -> f32 {
     let task = &scheduler.tasks[task_idx];
@@ -92,6 +98,20 @@ mod tests {
         let current_time = scheduler.interval.start + 11.hours();
         let score = dependency(&scheduler, current_time, task_idx);
         assert_eq!(score, 1.0);
+    }
+
+    #[test]
+    fn test_priority_heuristic() {
+        let schedule = get_test_scheduler();
+        let task_idx = 0;
+        let current_time = schedule.interval.start;
+
+        let score = priority(&schedule, current_time, task_idx);
+        assert_eq!(score, 1.0);
+
+        let task_idx = 2;
+        let score = priority(&schedule, current_time, task_idx);
+        assert_eq!(score, 2.0);
     }
 
     #[test]

@@ -20,6 +20,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         .add_heuristic(heuristics::dependency)
         .add_heuristic(heuristics::volume)
         .add_heuristic(heuristics::deadline)
+        .add_heuristic(heuristics::priority)
         .add_heuristic(heuristics::locality);
 
     scheduler.schedule();

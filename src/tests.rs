@@ -75,6 +75,7 @@ pub fn get_test_scheduler() -> Scheduler {
     Scheduler::new(allocator, tasks, interval)
         .add_heuristic(heuristics::dependency)
         .add_heuristic(heuristics::volume)
+        .add_heuristic(heuristics::priority)
         .add_heuristic(heuristics::deadline)
 }
 
