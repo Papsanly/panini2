@@ -70,17 +70,17 @@ pub struct Scheduler {
 
 pub type Schedule = BTreeMap<String, BTreeMap<String, String>>;
 
-impl From<Scheduler> for Schedule {
-    fn from(scheduler: Scheduler) -> Self {
+impl From<&Scheduler> for Schedule {
+    fn from(scheduler: &Scheduler) -> Self {
         let mut all_intervals = Vec::new();
-        for (task_idx, intervals) in scheduler.inner.into_iter().enumerate() {
+        for (task_idx, intervals) in scheduler.inner.iter().enumerate() {
             for interval in intervals {
                 all_intervals.push((scheduler.tasks[task_idx].description.clone(), interval));
             }
         }
 
-        for (interval, description) in scheduler.allocator.plans {
-            all_intervals.push((description, interval));
+        for (interval, description) in &scheduler.allocator.plans {
+            all_intervals.push((description.clone(), interval));
         }
 
         all_intervals
@@ -228,5 +228,14 @@ impl Scheduler {
             .filter(|plan| plan.intercepts(&interval))
             .map(|plan| plan.hours())
             .sum::<f32>()
+    }
+
+    pub fn get_missed_deadlines_tasks(&self) -> Vec<TaskIdx> {
+        self.tasks
+            .iter()
+            .enumerate()
+            .filter(|(idx, task)| task.volume - self.get_total_task_hours(*idx) != 0.0)
+            .map(|(idx, _)| idx)
+            .collect()
     }
 }

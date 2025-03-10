@@ -24,9 +24,18 @@ fn run() -> Result<(), Box<dyn Error>> {
         .add_heuristic(heuristics::locality);
 
     scheduler.schedule();
-    let schedule = Schedule::from(scheduler);
+    let schedule = Schedule::from(&scheduler);
 
     fs::write(SCHEDULE_FILE, serde_yaml::to_string(&schedule)?)?;
+
+    for idx in scheduler.get_missed_deadlines_tasks() {
+        let task = &scheduler.tasks[idx];
+        eprintln!(
+            "Missed deadline: {}, needs {} more hour(s)",
+            task.description,
+            task.volume - scheduler.get_total_task_hours(idx)
+        );
+    }
 
     Ok(())
 }
