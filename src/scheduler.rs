@@ -75,11 +75,15 @@ impl From<Scheduler> for Schedule {
         let mut all_intervals = Vec::new();
         for (task_idx, intervals) in scheduler.inner.into_iter().enumerate() {
             for interval in intervals {
-                all_intervals.push((task_idx, interval.clone()));
+                all_intervals.push((scheduler.tasks[task_idx].description.clone(), interval));
             }
         }
 
-        let all_intervals_grouped = all_intervals
+        for (interval, description) in scheduler.allocator.plans {
+            all_intervals.push((description, interval));
+        }
+
+        all_intervals
             .into_iter()
             .group_by(|(_, interval)| {
                 interval
@@ -88,22 +92,20 @@ impl From<Scheduler> for Schedule {
                     .round(ZonedRound::new().smallest(Unit::Day).mode(RoundMode::Trunc))
                     .expect("Failed to round timestamp")
             })
-            .into_iter();
-
-        all_intervals_grouped
+            .into_iter()
             .map(|(day, intervals)| {
                 (
                     day.strftime("%F").to_string(),
                     intervals
                         .into_iter()
-                        .map(|(task_idx, interval)| {
+                        .map(|(description, interval)| {
                             (
                                 format!(
                                     "{} - {}",
                                     interval.start.to_zoned(TimeZone::system()).strftime("%R"),
                                     interval.end.to_zoned(TimeZone::system()).strftime("%R"),
                                 ),
-                                scheduler.tasks[task_idx].description.clone(),
+                                description,
                             )
                         })
                         .collect(),
