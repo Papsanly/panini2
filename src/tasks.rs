@@ -6,12 +6,22 @@ impl TryFrom<String> for Task {
     type Error = Box<dyn Error>;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        let [description, deadline, volume, progress]: [&str; 4] = value
-            .split('/')
-            .map(|v| v.trim())
-            .collect::<Vec<_>>()
-            .try_into()
-            .map_err(|e: Vec<_>| format!("Expected 4 elements, got {}: {:?}", e.len(), e))?;
+        let mut parts: Vec<_> = value.split('/').map(|p| p.trim()).collect();
+
+        let priority = if parts.len() == 5 {
+            let res = parts.pop().unwrap();
+            if !res.chars().all(|c| c == '!') {
+                return Err(format!("Invalid priority: {}", res).into());
+            }
+            res.len() as f32
+        } else {
+            1.0
+        };
+
+        let [description, deadline, volume, progress]: [&str; 4] =
+            parts.try_into().map_err(|e: Vec<_>| {
+                format!("Expected at least 4 elements, got {}: {:?}", e.len(), e)
+            })?;
 
         let deadline = deadline
             .parse::<Date>()?
@@ -23,7 +33,7 @@ impl TryFrom<String> for Task {
         Ok(Task {
             description: description.to_string(),
             deadline,
-            priority: 1.0,
+            priority,
             volume: volume * (1.0 - progress / 100.0),
             dependencies: Vec::new(),
         })
