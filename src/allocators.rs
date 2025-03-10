@@ -1,7 +1,7 @@
 use crate::{interval::Interval, tasks::TaskIdx, Scheduler};
 use derive_more::Into;
 use jiff::{Span, Timestamp, ToSpan, Unit};
-use std::{collections::HashMap, error::Error, str::FromStr};
+use std::{collections::HashMap, error::Error};
 
 pub struct TaskAllocatorWithPlans {
     pub granularity: Span,
@@ -56,9 +56,10 @@ impl TaskAllocatorWithPlans {
 #[derive(Into)]
 pub struct Plans(HashMap<Interval, String>);
 
-impl FromStr for Plans {
-    type Err = Box<dyn Error>;
-    fn from_str(_s: &str) -> Result<Self, Self::Err> {
+impl TryFrom<HashMap<String, HashMap<String, String>>> for Plans {
+    type Error = Box<dyn Error>;
+
+    fn try_from(value: HashMap<String, HashMap<String, String>>) -> Result<Self, Self::Error> {
         todo!()
     }
 }
