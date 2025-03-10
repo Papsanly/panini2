@@ -149,7 +149,7 @@ impl Scheduler {
 
         for heuristic in &self.heuristics {
             for (task_idx, score) in heuristic_scores.iter_mut().enumerate() {
-                *score *= heuristic(self, self.current_time, task_idx);
+                *score *= heuristic(self, task_idx);
             }
         }
 
