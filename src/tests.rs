@@ -83,28 +83,24 @@ pub fn get_test_scheduler() -> Scheduler {
 fn test_scheduler() {
     let mut scheduler = get_test_scheduler();
 
-    let mut scheduled_tasks = Vec::new();
-    loop {
-        let next_item = scheduler.next();
-        match next_item {
-            Some((task_idx, task_interval)) => {
-                scheduled_tasks.push((task_idx, task_interval.clone()));
-                scheduler.schedule_task(task_idx, task_interval)
-            }
-            None => break,
-        }
+    while let Some((task_idx, task_interval)) = scheduler.next() {
+        scheduler.schedule_task(task_idx, task_interval);
     }
 
+    let mut all_intervals = Vec::new();
+    for (task_idx, intervals) in scheduler.iter().enumerate() {
+        for interval in intervals {
+            all_intervals.push((task_idx, interval.clone()));
+        }
+    }
+    all_intervals.sort_by_key(|(_, interval)| interval.start);
+
     assert_eq!(
-        scheduled_tasks,
+        all_intervals,
         vec![
             (
                 2,
-                Interval::from_span("2025-03-05T09:00Z".parse().unwrap(), 1.hour())
-            ),
-            (
-                2,
-                Interval::from_span("2025-03-05T10:00Z".parse().unwrap(), 1.hour())
+                Interval::from_span("2025-03-05T09:00Z".parse().unwrap(), 2.hour())
             ),
             (
                 0,

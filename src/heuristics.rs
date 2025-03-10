@@ -95,10 +95,7 @@ mod tests {
 
         let task_idx = 0;
         let current_time = scheduler.interval.start + 9.hours();
-        scheduler.schedule_task(
-            task_idx,
-            Interval::new(current_time, current_time + 2.hours()),
-        );
+        scheduler.schedule_task(task_idx, Interval::from_span(current_time, 2.hours()));
         let task_idx = 1;
         scheduler.current_time = scheduler.interval.start + 11.hours();
         let score = dependency(&scheduler, task_idx);

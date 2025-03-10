@@ -134,7 +134,27 @@ impl Scheduler {
     }
 
     pub fn schedule_task(&mut self, task_idx: TaskIdx, interval: Interval) {
-        self[task_idx].push(interval);
+        let Some(last_task) = self.iter().position(|intervals| {
+            let Some(last_interval) = intervals.iter().max_by_key(|i| i.end) else {
+                return false;
+            };
+            last_interval.end == interval.start
+        }) else {
+            self[task_idx].push(interval);
+            return;
+        };
+
+        if last_task != task_idx {
+            self[task_idx].push(interval);
+            return;
+        }
+
+        let last_interval = self[task_idx]
+            .iter_mut()
+            .max_by_key(|interval| interval.end)
+            .expect("Failed to find last interval");
+
+        last_interval.end = interval.end;
     }
 
     // works by iterating over the tasks and applying heuristics to them. the task with the highest
@@ -174,13 +194,14 @@ impl Scheduler {
     pub fn get_last_task(&self) -> Option<TaskIdx> {
         self.iter()
             .enumerate()
-            .max_by_key(|(_, intervals)| {
-                intervals
-                    .iter()
-                    .max_by_key(|interval| interval.end)
-                    .map(|interval| interval.end)
+            .max_by_key(|(_, intervals)| intervals.iter().map(|interval| interval.end).max())
+            .and_then(|(task_idx, intervals)| {
+                if intervals.is_empty() {
+                    None
+                } else {
+                    Some(task_idx)
+                }
             })
-            .map(|(task_idx, _)| task_idx)
     }
 
     pub fn add_heuristic(mut self, heuristic: Heuristic) -> Self {
