@@ -6,7 +6,7 @@ use crate::{
     tasks::{Task, TaskIdx, Tasks},
 };
 use derive_more::{Deref, DerefMut};
-use jiff::{civil::Date, tz::TimeZone, RoundMode, Timestamp, ToSpan, Unit, ZonedRound};
+use jiff::{civil::DateTime, tz::TimeZone, RoundMode, Timestamp, ToSpan, Unit, ZonedRound};
 use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Deserializer,
@@ -74,14 +74,10 @@ impl TryFrom<SchedulerConfig> for Scheduler {
 
     fn try_from(value: SchedulerConfig) -> Result<Self, Self::Error> {
         let interval = Interval::new(
-            value
-                .start
-                .parse::<Date>()?
+            DateTime::strptime("%F %R", value.start)?
                 .to_zoned(TimeZone::system())?
                 .timestamp(),
-            value
-                .end
-                .parse::<Date>()?
+            DateTime::strptime("%F %R", value.end)?
                 .to_zoned(TimeZone::system())?
                 .timestamp(),
         );

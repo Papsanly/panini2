@@ -122,7 +122,14 @@ impl TryFrom<(&Interval, Vec<(String, HashMap<String, String>)>)> for Plans {
 
             for (time, description) in day_plans {
                 for datetime in cron
-                    .iter_from(to_chrono(interval.start))
+                    .iter_from(to_chrono(
+                        interval
+                            .start
+                            .to_zoned(TimeZone::system())
+                            .round(ZonedRound::new().smallest(Unit::Day).mode(RoundMode::Trunc))
+                            .unwrap()
+                            .timestamp(),
+                    ))
                     .take_while(|dt| from_chrono(*dt) < interval.end)
                 {
                     let date = from_chrono(datetime);
