@@ -6,11 +6,9 @@ use crate::{
 };
 use croner::Cron;
 use derive_more::{Deref, DerefMut, Into};
+use indexmap::IndexMap;
 use jiff::{civil::DateTime, tz::TimeZone, RoundMode, Span, ToSpan, Unit, ZonedRound};
-use std::{
-    collections::{BTreeMap, HashMap},
-    error::Error,
-};
+use std::{collections::BTreeMap, error::Error};
 
 pub struct TaskAllocatorWithPlans {
     pub granularity: Span,
@@ -62,7 +60,7 @@ impl TaskAllocatorWithPlans {
 pub struct Plans(BTreeMap<Interval, String>);
 
 impl Plans {
-    pub fn insert_with_overriding(&mut self, interval: Interval, description: String) {
+    pub fn remove_on_interval(&mut self, interval: &Interval) {
         let contained_intervals: Vec<_> = self
             .keys()
             .filter(|&k| interval.contains(k))
@@ -75,7 +73,7 @@ impl Plans {
 
         let is_contained_in_intervals: Vec<_> = self
             .iter()
-            .filter(|(k, _)| k.contains(&interval))
+            .filter(|(k, _)| k.contains(interval))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
 
@@ -104,16 +102,14 @@ impl Plans {
                 self.insert(Interval::new(interval.end, k.end), v);
             }
         }
-
-        self.insert(interval, description);
     }
 }
 
-impl TryFrom<(&Interval, Vec<(String, HashMap<String, String>)>)> for Plans {
+impl TryFrom<(&Interval, IndexMap<String, IndexMap<String, String>>)> for Plans {
     type Error = Box<dyn Error>;
 
     fn try_from(
-        (interval, value): (&Interval, Vec<(String, HashMap<String, String>)>),
+        (interval, value): (&Interval, IndexMap<String, IndexMap<String, String>>),
     ) -> Result<Self, Self::Error> {
         let mut plans = Plans(BTreeMap::new());
         for (cron_part, day_plans) in value {
@@ -164,7 +160,11 @@ impl TryFrom<(&Interval, Vec<(String, HashMap<String, String>)>)> for Plans {
                     };
 
                     let plan_interval = Interval::new(start, end);
-                    plans.insert_with_overriding(plan_interval, description.clone());
+
+                    plans.remove_on_interval(&plan_interval);
+                    if description != "null" {
+                        plans.insert(plan_interval, description.clone());
+                    }
                 }
             }
         }

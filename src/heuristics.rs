@@ -60,7 +60,7 @@ pub fn locality(scheduler: &Scheduler, task_idx: TaskIdx) -> f32 {
         return 1.0;
     };
     if previous_task == task_idx {
-        2.0
+        4.0
     } else {
         1.0
     }
